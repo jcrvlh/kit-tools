@@ -262,7 +262,7 @@ Ordem: 0–21 Maiores (O Louco … O Mundo), depois Paus Ás–Rei (22–35),
 Copas (36–49), Espadas (50–63), Ouros (64–77).
 
 **Estimativa de tamanho:** ~78 × 800 B ≈ 62 KB de `.rodata` (incl. `about` + as
-3 lentes de posição) → `tool.elf` ~140–180 KB. Muito abaixo do limite de 7 MB do
+3 lentes de posição) → `tool.so` ~140–180 KB. Muito abaixo do limite de 7 MB do
 `.kit` e do orçamento de PSRAM.
 
 ### 6.1 As três camadas de texto
@@ -336,7 +336,7 @@ para a mais aplicada:
   "kind": "tool",
   "accent": "#2C3CC4",
   "home_icon": "card",
-  "entry_point": "tool.elf",
+  "entry_point": "tool.so",
   "arch": "xtensa-esp32s3",
   "permissions": ["display", "input", "random", "storage", "audio", "imu"],
   "api_level": 1,

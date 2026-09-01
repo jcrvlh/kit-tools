@@ -18,9 +18,9 @@ endif()
 # Biblioteca de stubs para build nativo (desktop / CI).
 add_subdirectory("${KIT_SDK_PATH}/stubs" "${CMAKE_BINARY_DIR}/kit_stubs")
 
-# --- Tool: binário de entrada `tool.elf` (nome exigido pelo manifest) ------
-# Build nativo: linka contra os stubs e roda a lógica sem UI (stub_main).
-# Build Xtensa (CI): mesmo alvo cross-compilado para o ESP32-S3.
+# --- Tool em modo nativo (stubs): roda a lógica sem UI --------------------
+# O binário de entrega (`tool.so`, Xtensa) sai de `kit-cli build --target
+# xtensa`, que compila src/*.c direto — não passa por este CMake.
 add_executable(tool.elf
     src/main.c
     src/tarot_draw.c

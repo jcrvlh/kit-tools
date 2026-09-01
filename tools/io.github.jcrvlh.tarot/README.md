@@ -29,17 +29,19 @@ cmake --build build
 ctest --test-dir build
 ```
 
-## Empacotar
+## Empacotar (Xtensa)
 
 ```bash
-python ../../scripts/validate_tool.py .
-kit-cli build . --target xtensa    # requer o toolchain do ESP-IDF (a CI faz isso)
-kit-cli pack  . -o io.github.jcrvlh.tarot.kit
+# toolchain do ESP-IDF no PATH + headers do LVGL 9.5.x:
+#   export KIT_LVGL_DIR=/caminho/para/lvgl        (ou um build do firmware já feito)
+kit-cli build . --target xtensa                   # gera tool.so
+kit-cli pack  . -o io.github.jcrvlh.tarot.kit     # tool.so + manifest + icon.bin
 ```
 
-O `.kit` de release (binário Xtensa + assinatura Ed25519) sai da pipeline
-`publish.yml` do catálogo. Localmente, sem o toolchain, o `pack` empacota o
-`tool.elf` nativo — serve para inspeção (`kit-cli info`), não para o dispositivo.
+Na prática o `.kit` de release sai da pipeline `publish.yml` do catálogo
+(compila para o ESP32-S3, empacota e publica em Releases; assinatura Ed25519
+pendente do ADR-0012). Ver
+[tool_lvgl_runtime.md](https://github.com/jcrvlh/kit/blob/main/tools-sdk/docs/tool_lvgl_runtime.md).
 
 ## Ícone
 
