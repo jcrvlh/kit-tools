@@ -76,8 +76,12 @@ static void build_settings(void);
 static int rng_range(int lo, int hi)
 {
     if (s_api && s_api->random) return (int)s_api->random->range(lo, hi);
+#ifdef KIT_SDK_STUBS
     if (hi <= lo) return lo;
-    return lo + (int)(rand() % (unsigned)(hi - lo + 1));
+    return lo + (int)(rand() % (unsigned)(hi - lo + 1));  /* só no build nativo */
+#else
+    return lo;  /* inalcançável: "random" é permissão declarada no manifest */
+#endif
 }
 
 /* --------------------------------------------------------------------------
