@@ -1,0 +1,66 @@
+name: Validar Tools
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - 'scripts/**'
+      - 'schema/**'
+      - '.github/workflows/validate.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kit-tools
+        uses: actions/checkout@v4
+        with:
+          path: kit-tools
+
+      - name: Checkout SDK (jcrvlh/kit)
+        uses: actions/checkout@v4
+        with:
+          repository: jcrvlh/kit
+          path: kit
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências
+        run: pip install ./kit/tools-sdk/cli jsonschema
+
+      - name: Validar manifestos e namespaces
+        working-directory: kit-tools
+        run: python scripts/validate_tool.py --all
+
+      - name: Gerar catálogo e validar contra o schema
+        working-directory: kit-tools
+        run: |
+          python scripts/build_catalog.py
+          python - <<'PY'
+          import json, jsonschema, pathlib
+          jsonschema.validate(
+              json.loads(pathlib.Path("catalog/index.json").read_text()),
+              json.loads(pathlib.Path("schema/index.schema.json").read_text()),
+          )
+          print("index.json gerado válido")
+          PY
+
+      - name: Build nativo de cada Tool (stubs)
+        working-directory: kit-tools
+        run: |
+          export KIT_SDK_PATH="$GITHUB_WORKSPACE/kit/tools-sdk"
+          fail=0
+          for d in tools/*/; do
+            echo "::group::$d"
+            if cmake -B "$d/build" -S "$d" && cmake --build "$d/build"; then
+              echo "OK $d"
+            else
+              echo "::error::build nativo falhou em $d"; fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail

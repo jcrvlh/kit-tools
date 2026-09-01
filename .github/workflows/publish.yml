@@ -1,0 +1,56 @@
+name: Publicar pacote .kit (WIP)
+
+# Esboço da pipeline de publicação. Ainda NÃO está pronta para uso automático:
+#  - a compilação Xtensa de Tools avulsas via kit-cli precisa de ajuste fino;
+#  - a assinatura Ed25519 depende da implementação do ADR-0012 (kit-cli sign)
+#    e da chave de release do projeto (segredo KIT_RELEASE_PRIVATE_KEY).
+# Por isso roda só sob demanda (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool_id:
+        description: 'id da Tool em tools/ (ex: io.github.jcrvlh.hello)'
+        required: true
+
+permissions:
+  contents: write   # criar Releases
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kit-tools
+        uses: actions/checkout@v4
+        with: { path: kit-tools }
+
+      - name: Checkout SDK (jcrvlh/kit)
+        uses: actions/checkout@v4
+        with: { repository: jcrvlh/kit, path: kit }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - run: pip install ./kit/tools-sdk/cli
+
+      - name: Compilar para ESP32-S3
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.3
+          target: esp32s3
+          command: |
+            export KIT_SDK_PATH="$GITHUB_WORKSPACE/kit/tools-sdk"
+            cd kit-tools/tools/${{ inputs.tool_id }}
+            kit-cli build . --target xtensa
+            kit-cli pack . -o "${{ inputs.tool_id }}.kit"
+
+      # - name: Assinar (ADR-0012)
+      #   run: kit-cli sign kit-tools/tools/${{ inputs.tool_id }}/${{ inputs.tool_id }}.kit \
+      #          --key <(echo "${{ secrets.KIT_RELEASE_PRIVATE_KEY }}")
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tool_id }}-v${{ github.run_number }}
+          files: kit-tools/tools/${{ inputs.tool_id }}/${{ inputs.tool_id }}.kit
+          fail_on_unmatched_files: true

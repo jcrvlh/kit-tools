@@ -1,0 +1,17 @@
+# Artefatos de build de Tools
+tools/**/build/
+tools/**/tool.elf
+*.kit
+
+# Catálogo e site — gerados pela CI
+/catalog/index.json
+/_site/
+/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# SO
+.DS_Store

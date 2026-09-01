@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://jcrvlh.github.io/kit-tools/schema/index.schema.json",
+  "title": "KIT — Catálogo de Tools",
+  "type": "object",
+  "required": ["catalog_version", "generated_at", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "catalog_version": { "const": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key_id", "algo", "public_key"],
+        "properties": {
+          "key_id": { "type": "string" },
+          "algo": { "const": "ed25519" },
+          "public_key": { "type": "string", "description": "base64 de 32 bytes" },
+          "owner": { "type": "string" },
+          "official": { "type": "boolean" }
+        }
+      }
+    },
+    "revoked": {
+      "type": "array",
+      "items": { "type": "string", "description": "id@version_code ou key_id" }
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/tool" }
+    }
+  },
+  "definitions": {
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "tool": {
+      "type": "object",
+      "required": [
+        "id", "name", "version", "version_code",
+        "min_runtime", "max_runtime", "permissions", "tier", "package"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$" },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "$ref": "#/definitions/semver" },
+        "version_code": { "type": "integer", "minimum": 1 },
+        "min_runtime": { "$ref": "#/definitions/semver" },
+        "max_runtime": { "$ref": "#/definitions/semver" },
+        "author": { "type": "string" },
+        "description": { "type": "string" },
+        "api_level": { "type": "integer", "minimum": 1 },
+        "tier": { "enum": ["official", "community"] },
+        "size_installed": { "type": ["integer", "null"], "minimum": 0 },
+        "key_id": { "type": "string" },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "enum": ["display", "input", "storage", "random", "time", "audio", "power", "imu", "network"]
+          }
+        },
+        "package": {
+          "type": "object",
+          "required": ["url"],
+          "additionalProperties": false,
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+            "size": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "icon_url": { "type": "string" },
+        "source_url": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

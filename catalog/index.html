@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KIT — Catálogo de Tools</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 3rem auto; padding: 0 1.2rem; }
+    h1 { font-size: 1.4rem; }
+    code { background: color-mix(in srgb, currentColor 12%, transparent); padding: .1em .35em; border-radius: 3px; }
+    ul { padding-left: 1.2rem; }
+    .tool { margin: .4rem 0; }
+    .muted { opacity: .7; font-size: .9em; }
+  </style>
+</head>
+<body>
+  <h1>KIT — Catálogo de Tools</h1>
+  <p>Catálogo público de Tools instaláveis no <a href="https://github.com/jcrvlh/kit">KIT</a>.
+     Consumido pelo web-installer e, por Wi-Fi, pelo próprio dispositivo.</p>
+  <p>Índice legível por máquina: <a href="index.json"><code>index.json</code></a>
+     &middot; <a href="schema/index.schema.json">schema</a></p>
+  <ul id="tools"><li class="muted">carregando…</li></ul>
+  <script>
+    fetch('index.json').then(r => r.json()).then(cat => {
+      const ul = document.getElementById('tools');
+      ul.innerHTML = '';
+      for (const t of cat.tools) {
+        const li = document.createElement('li');
+        li.className = 'tool';
+        li.innerHTML = `<strong>${t.name}</strong> <span class="muted">${t.id} · v${t.version} · ${t.tier}</span><br>${t.description ?? ''}`;
+        ul.appendChild(li);
+      }
+      if (!cat.tools.length) ul.innerHTML = '<li class="muted">nenhuma Tool ainda</li>';
+    }).catch(() => {
+      document.getElementById('tools').innerHTML = '<li class="muted">index.json indisponível</li>';
+    });
+  </script>
+</body>
+</html>

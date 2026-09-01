@@ -1,0 +1,58 @@
+name: Publicar catálogo
+
+# Gera catalog/index.json e publica em https://jcrvlh.github.io/kit-tools/
+# Requer: Settings > Pages > Source = "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - 'scripts/**'
+      - 'schema/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Baixar pacotes .kit publicados (se houver)
+        run: |
+          mkdir -p dist
+          # TODO(ADR-0012): baixar os .kit das Releases para preencher sha256/size.
+          # gh release download ... -D dist/  (quando a pipeline de publish existir)
+
+      - name: Gerar catálogo
+        run: python scripts/build_catalog.py --dist dist --out _site/index.json
+
+      - name: Montar site
+        run: |
+          mkdir -p _site/schema
+          cp schema/index.schema.json _site/schema/
+          cp catalog/index.html _site/index.html 2>/dev/null || true
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
