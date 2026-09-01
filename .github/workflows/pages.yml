@@ -58,3 +58,5 @@ jobs:
           path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+
+# trigger: re-deploy do catálogo
