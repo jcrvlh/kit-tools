@@ -1,383 +1,1261 @@
 /**
  * @file fora_words.c
- * @brief Banco de palavras para a Tool FORA.
- *
- * 20 categorias com 50+ palavras cada, todas em CAIXA ALTA (UTF-8).
- * Quando uma escape hex precede uma letra ASCII, usamos string
- * concatenation ("\\xNN" "LETRA") para evitar ambiguidade.
+ * @brief Banco de palavras compacto para a Tool FORA.
+ * Armazenamento contínuo em blobs (zero realocações dinâmicas).
  */
 
 #include "fora_words.h"
+#include <stdint.h>
 
 #define COUNTOF(arr) ((int)(sizeof(arr) / sizeof((arr)[0])))
 
-/* -----------------------------------------------------------------------
- * Categoria 1: COMIDAS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_COMIDAS[] = {
-    "PIZZA", "LASANHA", "HAMB" "\xC3\x9A" "RGUER", "SUSHI", "TACO",
-    "CHURRASCO", "FEIJOADA", "MACARR" "\xC3\x83" "O", "SOPA", "SALADA",
-    "SANDUICHE", "PASTEL", "COXINHA", "P" "\xC3\x83" "O DE QUEIJO", "TAPIOCA",
-    "CREPE", "RISOTO", "STROGONOFF", "BATATA FRITA", "PIPOCA",
-    "BOLO", "PUDIM", "BRIGADEIRO", "SORVETE", "MOUSSE",
-    "CHOCOLATE", "BISCOITO", "TORTA", "EMPADA", "A" "\xC3\x87" "A" "\xC3\x8D",
-    "SASHIMI", "YAKISOBA", "ESFIRRA", "BURRITO", "NACHOS",
-    "WAFFLE", "PANQUECA", "OMELETE", "MISTO QUENTE", "HOT DOG",
-    "ACARAJ" "\xC3\x89", "ARROZ DOCE", "RABANADA", "PAMONHA", "CURAL",
-    "FEIJ" "\xC3\x83" "O TROPEIRO", "QUICHE", "FONDUE", "CEVICHE", "TEMPURA",
-    "CROISSANT", "BRUSCHETTA", "CARPACCIO", "CANOLI", "BAKLAVA",
-    "ESPETINHO", "COSTELA", "PICANHA", "FRANGO FRITO", "ESTROGONOFE",
-};
+/* --- COMIDAS (60 palavras) --- */
+static const char BLOB_COMIDAS[] =
+    "PIZZA\0"
+    "LASANHA\0"
+    "HAMBÚRGUER\0"
+    "SUSHI\0"
+    "TACO\0"
+    "CHURRASCO\0"
+    "FEIJOADA\0"
+    "MACARRÃO\0"
+    "SOPA\0"
+    "SALADA\0"
+    "SANDUICHE\0"
+    "PASTEL\0"
+    "COXINHA\0"
+    "PÃO DE QUEIJO\0"
+    "TAPIOCA\0"
+    "CREPE\0"
+    "RISOTO\0"
+    "STROGONOFF\0"
+    "BATATA FRITA\0"
+    "PIPOCA\0"
+    "BOLO\0"
+    "PUDIM\0"
+    "BRIGADEIRO\0"
+    "SORVETE\0"
+    "MOUSSE\0"
+    "CHOCOLATE\0"
+    "BISCOITO\0"
+    "TORTA\0"
+    "EMPADA\0"
+    "AÇAÍ\0"
+    "SASHIMI\0"
+    "YAKISOBA\0"
+    "ESFIRRA\0"
+    "BURRITO\0"
+    "NACHOS\0"
+    "WAFFLE\0"
+    "PANQUECA\0"
+    "OMELETE\0"
+    "MISTO QUENTE\0"
+    "HOT DOG\0"
+    "ACARAJÉ\0"
+    "ARROZ DOCE\0"
+    "RABANADA\0"
+    "PAMONHA\0"
+    "CURAL\0"
+    "FEIJÃO TROPEIRO\0"
+    "QUICHE\0"
+    "FONDUE\0"
+    "CEVICHE\0"
+    "TEMPURA\0"
+    "CROISSANT\0"
+    "BRUSCHETTA\0"
+    "CARPACCIO\0"
+    "CANOLI\0"
+    "BAKLAVA\0"
+    "ESPETINHO\0"
+    "COSTELA\0"
+    "PICANHA\0"
+    "FRANGO FRITO\0"
+    "ESTROGONOFE\0"
+;
+static const uint16_t OFFSETS_COMIDAS[] = { 0, 6, 14, 26, 32, 37, 47, 56, 66, 71, 78, 88, 95, 103, 118, 126, 132, 139, 150, 163, 170, 175, 181, 192, 200, 207, 217, 226, 232, 239, 246, 254, 263, 271, 279, 286, 293, 302, 310, 323, 331, 340, 351, 360, 368, 374, 391, 398, 405, 413, 421, 431, 442, 452, 459, 467, 477, 485, 493, 506 };
 
-/* -----------------------------------------------------------------------
- * Categoria 2: BEBIDAS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_BEBIDAS[] = {
-    "CAF" "\xC3\x89", "CERVEJA", "CAIPIRINHA", "REFRIGERANTE", "SUCO",
-    "CH" "\xC3\x81", "LEITE", "\xC3\x81" "GUA DE COCO", "VINHO", "CHAMPANHE",
-    "WHISKY", "VODKA", "RUM", "GIN", "TEQUILA",
-    "MOJITO", "LIMONADA", "MILKSHAKE", "SMOOTHIE", "ENERGETICO",
-    "CHOCOLATE QUENTE", "CAPPUCCINO", "EXPRESSO", "LATTE", "MATE",
-    "GUARAN" "\xC3\x81", "TODDY", "LICOR", "SANGRIA", "SPRITZ",
-    "DAIQUIRI", "MARGARITA", "COSMOPOLITAN", "LONG ISLAND", "CUBA LIBRE",
-    "CERVEJA ARTESANAL", "CHOPP", "CIDRA", "SAQUE", "GRAPPA",
-    "SUCO VERDE", "KOMBUCHA", "HORCHATA", "CALDO DE CANA", "CHIMARR" "\xC3\x83" "O",
-    "BATIDA", "PONCHE", "HIDROMEL", "ABSINTO", "APEROL",
-    "MARTINI", "NEGRONI", "MANHATTAN", "GIN T" "\xC3\x94" "NICA", "PINA COLADA",
-};
+/* --- BEBIDAS (55 palavras) --- */
+static const char BLOB_BEBIDAS[] =
+    "CAFÉ\0"
+    "CERVEJA\0"
+    "CAIPIRINHA\0"
+    "REFRIGERANTE\0"
+    "SUCO\0"
+    "CHÁ\0"
+    "LEITE\0"
+    "ÁGUA DE COCO\0"
+    "VINHO\0"
+    "CHAMPANHE\0"
+    "WHISKY\0"
+    "VODKA\0"
+    "RUM\0"
+    "GIN\0"
+    "TEQUILA\0"
+    "MOJITO\0"
+    "LIMONADA\0"
+    "MILKSHAKE\0"
+    "SMOOTHIE\0"
+    "ENERGETICO\0"
+    "CHOCOLATE QUENTE\0"
+    "CAPPUCCINO\0"
+    "EXPRESSO\0"
+    "LATTE\0"
+    "MATE\0"
+    "GUARANÁ\0"
+    "TODDY\0"
+    "LICOR\0"
+    "SANGRIA\0"
+    "SPRITZ\0"
+    "DAIQUIRI\0"
+    "MARGARITA\0"
+    "COSMOPOLITAN\0"
+    "LONG ISLAND\0"
+    "CUBA LIBRE\0"
+    "CERVEJA ARTESANAL\0"
+    "CHOPP\0"
+    "CIDRA\0"
+    "SAQUE\0"
+    "GRAPPA\0"
+    "SUCO VERDE\0"
+    "KOMBUCHA\0"
+    "HORCHATA\0"
+    "CALDO DE CANA\0"
+    "CHIMARRÃO\0"
+    "BATIDA\0"
+    "PONCHE\0"
+    "HIDROMEL\0"
+    "ABSINTO\0"
+    "APEROL\0"
+    "MARTINI\0"
+    "NEGRONI\0"
+    "MANHATTAN\0"
+    "GIN TÔNICA\0"
+    "PINA COLADA\0"
+;
+static const uint16_t OFFSETS_BEBIDAS[] = { 0, 6, 14, 25, 38, 43, 48, 54, 68, 74, 84, 91, 97, 101, 105, 113, 120, 129, 139, 148, 159, 176, 187, 196, 202, 207, 216, 222, 228, 236, 243, 252, 262, 275, 287, 298, 316, 322, 328, 334, 341, 352, 361, 370, 384, 395, 402, 409, 418, 426, 433, 441, 449, 459, 471 };
 
-/* -----------------------------------------------------------------------
- * Categoria 3: ANIMAIS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_ANIMAIS[] = {
-    "CACHORRO", "GATO", "ELEFANTE", "BALEIA", "LE" "\xC3\x83" "O",
-    "TIGRE", "URSO", "\xC3\x81" "GUIA", "TUBAR" "\xC3\x83" "O", "GOLFINHO",
-    "CAVALO", "MACACO", "GIRAFA", "PINGUIM", "COBRA",
-    "PAPAGAIO", "TARTARUGA", "POLVO", "FORMIGA", "BORBOLETA",
-    "LOBO", "RAPOSA", "CORUJA", "JACAR" "\xC3\x89", "HIPOP" "\xC3\x93" "TAMO",
-    "RINOCERONTE", "ZEBRA", "CAMELO", "CANGURU", "PANDA",
-    "ARARA", "FLAMINGO", "TUCANO", "BEM-TE-VI", "BEIJA-FLOR",
-    "HAMSTER", "COELHO", "OVELHA", "PORCO", "VACA",
-    "GALINHA", "PATO", "PERU", "ABELHA", "MOSCA",
-    "ARANHA", "ESCORPI" "\xC3\x83" "O", "CARACOL", "ESTRELA-DO-MAR", "CAVALO-MARINHO",
-    "PREGUICA", "CAPIVARA", "TATU", "MORCEGO", "CORVO",
-    "PEIXE-PALHACO", "LULA", "CARANGUEJO", "LAGOSTA", "SIRI",
-};
+/* --- ANIMAIS (60 palavras) --- */
+static const char BLOB_ANIMAIS[] =
+    "CACHORRO\0"
+    "GATO\0"
+    "ELEFANTE\0"
+    "BALEIA\0"
+    "LEÃO\0"
+    "TIGRE\0"
+    "URSO\0"
+    "ÁGUIA\0"
+    "TUBARÃO\0"
+    "GOLFINHO\0"
+    "CAVALO\0"
+    "MACACO\0"
+    "GIRAFA\0"
+    "PINGUIM\0"
+    "COBRA\0"
+    "PAPAGAIO\0"
+    "TARTARUGA\0"
+    "POLVO\0"
+    "FORMIGA\0"
+    "BORBOLETA\0"
+    "LOBO\0"
+    "RAPOSA\0"
+    "CORUJA\0"
+    "JACARÉ\0"
+    "HIPOPÓTAMO\0"
+    "RINOCERONTE\0"
+    "ZEBRA\0"
+    "CAMELO\0"
+    "CANGURU\0"
+    "PANDA\0"
+    "ARARA\0"
+    "FLAMINGO\0"
+    "TUCANO\0"
+    "BEM-TE-VI\0"
+    "BEIJA-FLOR\0"
+    "HAMSTER\0"
+    "COELHO\0"
+    "OVELHA\0"
+    "PORCO\0"
+    "VACA\0"
+    "GALINHA\0"
+    "PATO\0"
+    "PERU\0"
+    "ABELHA\0"
+    "MOSCA\0"
+    "ARANHA\0"
+    "ESCORPIÃO\0"
+    "CARACOL\0"
+    "ESTRELA-DO-MAR\0"
+    "CAVALO-MARINHO\0"
+    "PREGUICA\0"
+    "CAPIVARA\0"
+    "TATU\0"
+    "MORCEGO\0"
+    "CORVO\0"
+    "PEIXE-PALHACO\0"
+    "LULA\0"
+    "CARANGUEJO\0"
+    "LAGOSTA\0"
+    "SIRI\0"
+;
+static const uint16_t OFFSETS_ANIMAIS[] = { 0, 9, 14, 23, 30, 36, 42, 47, 54, 63, 72, 79, 86, 93, 101, 107, 116, 126, 132, 140, 150, 155, 162, 169, 177, 189, 201, 207, 214, 222, 228, 234, 243, 250, 260, 271, 279, 286, 293, 299, 304, 312, 317, 322, 329, 335, 342, 353, 361, 376, 391, 400, 409, 414, 422, 428, 442, 447, 458, 466 };
 
-/* -----------------------------------------------------------------------
- * Categoria 4: PAÍSES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_PAISES[] = {
-    "BRASIL", "JAP" "\xC3\x83" "O", "IT" "\xC3\x81" "LIA", "CANAD" "\xC3\x81", "FRAN" "\xC3\x87" "A",
-    "ALEMANHA", "ESPANHA", "PORTUGAL", "M" "\xC3\x89" "XICO", "ARGENTINA",
-    "ESTADOS UNIDOS", "REINO UNIDO", "AUSTR" "\xC3\x81" "LIA", "CHINA", "\xC3\x8D" "NDIA",
-    "R" "\xC3\x9A" "SSIA", "COREIA DO SUL", "EGITO", "TURQUIA", "GR" "\xC3\x89" "CIA",
-    "NORUEGA", "SU" "\xC3\x89" "CIA", "DINAMARCA", "FINL" "\xC3\x82" "NDIA", "HOLANDA",
-    "B" "\xC3\x89" "LGICA", "SU" "\xC3\x8D" "\xC3\x87" "A", "\xC3\x81" "USTRIA", "POL" "\xC3\x94" "NIA", "REP" "\xC3\x9A" "BLICA TCHECA",
-    "COL" "\xC3\x94" "MBIA", "CHILE", "PERU", "CUBA", "JAMAICA",
-    "TAIL" "\xC3\x82" "NDIA", "VIETN" "\xC3\x83", "INDON" "\xC3\x89" "SIA", "MAL" "\xC3\x81" "SIA", "FILIPINAS",
-    "IRLANDA", "ESC" "\xC3\x93" "CIA", "ISL" "\xC3\x82" "NDIA", "CRO" "\xC3\x81" "CIA", "ROM" "\xC3\x82" "NIA",
-    "MARROCOS", "\xC3\x81" "FRICA DO SUL", "NIG" "\xC3\x89" "RIA", "QU" "\xC3\x8A" "NIA", "GANA",
-    "ISRAEL", "EMIRADOS", "NOVA ZEL" "\xC3\x82" "NDIA", "PARAGUAI", "URUGUAI",
-};
+/* --- PAISES (55 palavras) --- */
+static const char BLOB_PAISES[] =
+    "BRASIL\0"
+    "JAPÃO\0"
+    "ITÁLIA\0"
+    "CANADÁ\0"
+    "FRANÇA\0"
+    "ALEMANHA\0"
+    "ESPANHA\0"
+    "PORTUGAL\0"
+    "MÉXICO\0"
+    "ARGENTINA\0"
+    "ESTADOS UNIDOS\0"
+    "REINO UNIDO\0"
+    "AUSTRÁLIA\0"
+    "CHINA\0"
+    "ÍNDIA\0"
+    "RÚSSIA\0"
+    "COREIA DO SUL\0"
+    "EGITO\0"
+    "TURQUIA\0"
+    "GRÉCIA\0"
+    "NORUEGA\0"
+    "SUÉCIA\0"
+    "DINAMARCA\0"
+    "FINLÂNDIA\0"
+    "HOLANDA\0"
+    "BÉLGICA\0"
+    "SUÍÇA\0"
+    "ÁUSTRIA\0"
+    "POLÔNIA\0"
+    "REPÚBLICA TCHECA\0"
+    "COLÔMBIA\0"
+    "CHILE\0"
+    "PERU\0"
+    "CUBA\0"
+    "JAMAICA\0"
+    "TAILÂNDIA\0"
+    "VIETNÃ\0"
+    "INDONÉSIA\0"
+    "MALÁSIA\0"
+    "FILIPINAS\0"
+    "IRLANDA\0"
+    "ESCÓCIA\0"
+    "ISLÂNDIA\0"
+    "CROÁCIA\0"
+    "ROMÂNIA\0"
+    "MARROCOS\0"
+    "ÁFRICA DO SUL\0"
+    "NIGÉRIA\0"
+    "QUÊNIA\0"
+    "GANA\0"
+    "ISRAEL\0"
+    "EMIRADOS\0"
+    "NOVA ZELÂNDIA\0"
+    "PARAGUAI\0"
+    "URUGUAI\0"
+;
+static const uint16_t OFFSETS_PAISES[] = { 0, 7, 14, 22, 30, 38, 47, 55, 64, 72, 82, 97, 109, 120, 126, 133, 141, 155, 161, 169, 177, 185, 193, 203, 214, 222, 231, 239, 248, 257, 275, 285, 291, 296, 301, 309, 320, 328, 339, 348, 358, 366, 375, 385, 394, 403, 412, 427, 436, 444, 449, 456, 465, 480, 489 };
 
-/* -----------------------------------------------------------------------
- * Categoria 5: CIDADES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_CIDADES[] = {
-    "S" "\xC3\x83" "O PAULO", "PARIS", "T" "\xC3\x93" "QUIO", "NOVA YORK", "LONDRES",
-    "RIO DE JANEIRO", "ROMA", "BARCELONA", "BERLIM", "AMSTERDAM",
-    "LISBOA", "BUENOS AIRES", "DUBAI", "SYDNEY", "LOS ANGELES",
-    "MIAMI", "ORLANDO", "CANCUN", "HAVANA", "BANGKOK",
-    "PRAGA", "VIENA", "ATENAS", "ISTAMBUL", "CAIRO",
-    "MUMBAI", "PEQUIM", "SEUL", "SINGAPURA", "HONG KONG",
-    "TORONTO", "VANCOUVER", "CIDADE DO M" "\xC3\x89" "XICO", "LIMA", "SANTIAGO",
-    "BRAS" "\xC3\x8D" "LIA", "SALVADOR", "FLORIAN" "\xC3\x93" "POLIS", "CURITIBA", "RECIFE",
-    "FORTALEZA", "MANAUS", "BEL" "\xC3\x89" "M", "PORTO ALEGRE", "BELO HORIZONTE",
-    "VENEZA", "MIL" "\xC3\x83" "O", "MADRI", "MOSCOU", "DUBLIN",
-    "OSLO", "COPENHAGUE", "ESTOCOLMO", "HELSINQUE", "MARRAKECH",
-};
+/* --- CIDADES (55 palavras) --- */
+static const char BLOB_CIDADES[] =
+    "SÃO PAULO\0"
+    "PARIS\0"
+    "TÓQUIO\0"
+    "NOVA YORK\0"
+    "LONDRES\0"
+    "RIO DE JANEIRO\0"
+    "ROMA\0"
+    "BARCELONA\0"
+    "BERLIM\0"
+    "AMSTERDAM\0"
+    "LISBOA\0"
+    "BUENOS AIRES\0"
+    "DUBAI\0"
+    "SYDNEY\0"
+    "LOS ANGELES\0"
+    "MIAMI\0"
+    "ORLANDO\0"
+    "CANCUN\0"
+    "HAVANA\0"
+    "BANGKOK\0"
+    "PRAGA\0"
+    "VIENA\0"
+    "ATENAS\0"
+    "ISTAMBUL\0"
+    "CAIRO\0"
+    "MUMBAI\0"
+    "PEQUIM\0"
+    "SEUL\0"
+    "SINGAPURA\0"
+    "HONG KONG\0"
+    "TORONTO\0"
+    "VANCOUVER\0"
+    "CIDADE DO MÉXICO\0"
+    "LIMA\0"
+    "SANTIAGO\0"
+    "BRASÍLIA\0"
+    "SALVADOR\0"
+    "FLORIANÓPOLIS\0"
+    "CURITIBA\0"
+    "RECIFE\0"
+    "FORTALEZA\0"
+    "MANAUS\0"
+    "BELÉM\0"
+    "PORTO ALEGRE\0"
+    "BELO HORIZONTE\0"
+    "VENEZA\0"
+    "MILÃO\0"
+    "MADRI\0"
+    "MOSCOU\0"
+    "DUBLIN\0"
+    "OSLO\0"
+    "COPENHAGUE\0"
+    "ESTOCOLMO\0"
+    "HELSINQUE\0"
+    "MARRAKECH\0"
+;
+static const uint16_t OFFSETS_CIDADES[] = { 0, 11, 17, 25, 35, 43, 58, 63, 73, 80, 90, 97, 110, 116, 123, 135, 141, 149, 156, 163, 171, 177, 183, 190, 199, 205, 212, 219, 224, 234, 244, 252, 262, 280, 285, 294, 304, 313, 328, 337, 344, 354, 361, 368, 381, 396, 403, 410, 416, 423, 430, 435, 446, 456, 466 };
 
-/* -----------------------------------------------------------------------
- * Categoria 6: LUGARES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_LUGARES[] = {
-    "PRAIA", "SHOPPING", "PARQUE", "HOSPITAL", "ESCOLA",
-    "CINEMA", "SUPERMERCADO", "ACADEMIA", "RESTAURANTE", "AEROPORTO",
-    "BIBLIOTECA", "MUSEU", "IGREJA", "EST" "\xC3\x81" "DIO", "TEATRO",
-    "PADARIA", "FARM" "\xC3\x81" "CIA", "DELEGACIA", "CORREIOS", "BANCO",
-    "ZOOL" "\xC3\x93" "GICO", "AQU" "\xC3\x81" "RIO", "PLANET" "\xC3\x81" "RIO", "CIRCO", "BALADA",
-    "CHURRASCARIA", "PIZZARIA", "SORVETERIA", "LANCHONETE", "BOTECO",
-    "MERCADO", "FEIRA", "PRA" "\xC3\x87" "A", "JARDIM", "MIRANTE",
-    "PONTE", "FAROL", "PORTO", "ESTA" "\xC3\x87" "\xC3\x83" "O DE TREM", "METR" "\xC3\x94",
-    "PISCINA", "CAMPO DE FUTEBOL", "QUADRA", "PISTA DE CORRIDA", "MONTANHA",
-    "CAVERNA", "CACHOEIRA", "LAGO", "RIO", "FLORESTA",
-    "DESERTO", "ILHA", "VULC" "\xC3\x83" "O", "CASTELO", "RU" "\xC3\x8D" "NAS",
-};
+/* --- LUGARES (55 palavras) --- */
+static const char BLOB_LUGARES[] =
+    "PRAIA\0"
+    "SHOPPING\0"
+    "PARQUE\0"
+    "HOSPITAL\0"
+    "ESCOLA\0"
+    "CINEMA\0"
+    "SUPERMERCADO\0"
+    "ACADEMIA\0"
+    "RESTAURANTE\0"
+    "AEROPORTO\0"
+    "BIBLIOTECA\0"
+    "MUSEU\0"
+    "IGREJA\0"
+    "ESTÁDIO\0"
+    "TEATRO\0"
+    "PADARIA\0"
+    "FARMÁCIA\0"
+    "DELEGACIA\0"
+    "CORREIOS\0"
+    "BANCO\0"
+    "ZOOLÓGICO\0"
+    "AQUÁRIO\0"
+    "PLANETÁRIO\0"
+    "CIRCO\0"
+    "BALADA\0"
+    "CHURRASCARIA\0"
+    "PIZZARIA\0"
+    "SORVETERIA\0"
+    "LANCHONETE\0"
+    "BOTECO\0"
+    "MERCADO\0"
+    "FEIRA\0"
+    "PRAÇA\0"
+    "JARDIM\0"
+    "MIRANTE\0"
+    "PONTE\0"
+    "FAROL\0"
+    "PORTO\0"
+    "ESTAÇÃO DE TREM\0"
+    "METRÔ\0"
+    "PISCINA\0"
+    "CAMPO DE FUTEBOL\0"
+    "QUADRA\0"
+    "PISTA DE CORRIDA\0"
+    "MONTANHA\0"
+    "CAVERNA\0"
+    "CACHOEIRA\0"
+    "LAGO\0"
+    "RIO\0"
+    "FLORESTA\0"
+    "DESERTO\0"
+    "ILHA\0"
+    "VULCÃO\0"
+    "CASTELO\0"
+    "RUÍNAS\0"
+;
+static const uint16_t OFFSETS_LUGARES[] = { 0, 6, 15, 22, 31, 38, 45, 58, 67, 79, 89, 100, 106, 113, 122, 129, 137, 147, 157, 166, 172, 183, 192, 204, 210, 217, 230, 239, 250, 261, 268, 276, 282, 289, 296, 304, 310, 316, 322, 340, 347, 355, 372, 379, 396, 405, 413, 423, 428, 432, 441, 449, 454, 462, 470 };
 
-/* -----------------------------------------------------------------------
- * Categoria 7: OBJETOS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_OBJETOS[] = {
-    "CHAVE", "\xC3\x93" "CULOS", "REL" "\xC3\x93" "GIO", "ESPELHO", "GUARDA-CHUVA",
-    "MOCHILA", "CARTEIRA", "CANETA", "TESOURA", "LANTERNA",
-    "GARRAFA", "COPO", "PRATO", "GARFO", "FACA",
-    "PANELA", "FRIGIDEIRA", "BALDE", "VASSOURA", "ESCADA",
-    "MARTELO", "CHAVE DE FENDA", "ALICATE", "SERROTE", "FURADEIRA",
-    "LIVRO", "CADERNO", "MAPA", "GLOBO", "CALCULADORA",
-    "COFRE", "CADEADO", "SINO", "VELA", "ISQUEIRO",
-    "DADO", "BARALHO", "BOLA", "SKATE", "PATINS",
-    "VIOL" "\xC3\x83" "O", "PIANO", "FLAUTA", "BATERIA", "MICROFONE",
-    "C" "\xC3\x82" "MERA", "BIN" "\xC3\x93" "CULOS", "B" "\xC3\x9A" "SSOLA", "TERM" "\xC3\x94" "METRO", "LUPA",
-    "APITO", "CAPACETE", "EXTINTOR", "BANDEIRA", "TROF" "\xC3\x89" "U",
-};
+/* --- OBJETOS (55 palavras) --- */
+static const char BLOB_OBJETOS[] =
+    "CHAVE\0"
+    "ÓCULOS\0"
+    "RELÓGIO\0"
+    "ESPELHO\0"
+    "GUARDA-CHUVA\0"
+    "MOCHILA\0"
+    "CARTEIRA\0"
+    "CANETA\0"
+    "TESOURA\0"
+    "LANTERNA\0"
+    "GARRAFA\0"
+    "COPO\0"
+    "PRATO\0"
+    "GARFO\0"
+    "FACA\0"
+    "PANELA\0"
+    "FRIGIDEIRA\0"
+    "BALDE\0"
+    "VASSOURA\0"
+    "ESCADA\0"
+    "MARTELO\0"
+    "CHAVE DE FENDA\0"
+    "ALICATE\0"
+    "SERROTE\0"
+    "FURADEIRA\0"
+    "LIVRO\0"
+    "CADERNO\0"
+    "MAPA\0"
+    "GLOBO\0"
+    "CALCULADORA\0"
+    "COFRE\0"
+    "CADEADO\0"
+    "SINO\0"
+    "VELA\0"
+    "ISQUEIRO\0"
+    "DADO\0"
+    "BARALHO\0"
+    "BOLA\0"
+    "SKATE\0"
+    "PATINS\0"
+    "VIOLÃO\0"
+    "PIANO\0"
+    "FLAUTA\0"
+    "BATERIA\0"
+    "MICROFONE\0"
+    "CÂMERA\0"
+    "BINÓCULOS\0"
+    "BÚSSOLA\0"
+    "TERMÔMETRO\0"
+    "LUPA\0"
+    "APITO\0"
+    "CAPACETE\0"
+    "EXTINTOR\0"
+    "BANDEIRA\0"
+    "TROFÉU\0"
+;
+static const uint16_t OFFSETS_OBJETOS[] = { 0, 6, 14, 23, 31, 44, 52, 61, 68, 76, 85, 93, 98, 104, 110, 115, 122, 133, 139, 148, 155, 163, 178, 186, 194, 204, 210, 218, 223, 229, 241, 247, 255, 260, 265, 274, 279, 287, 292, 298, 305, 313, 319, 326, 334, 344, 352, 363, 372, 384, 389, 395, 404, 413, 422 };
 
-/* -----------------------------------------------------------------------
- * Categoria 8: PROFISSÕES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_PROFISSOES[] = {
-    "M" "\xC3\x89" "DICO", "PROFESSOR", "ENGENHEIRO", "BOMBEIRO", "POLICIAL",
-    "ADVOGADO", "PILOTO", "ASTRONAUTA", "COZINHEIRO", "PADEIRO",
-    "DENTISTA", "VETERINARIO", "ENFERMEIRO", "FARMACEUTICO", "PSICOLOGO",
-    "ARQUITETO", "ELETRICISTA", "ENCANADOR", "MEC" "\xC3\x82" "NICO", "MOTORISTA",
-    "JORNALISTA", "FOT" "\xC3\x93" "GRAFO", "ATOR", "DIRETOR", "PRODUTOR",
-    "CANTOR", "M" "\xC3\x9A" "SICO", "DAN" "\xC3\x87" "ARINO", "ESCRITOR", "POETA",
-    "PINTOR", "ESCULTOR", "DESIGNER", "PROGRAMADOR", "CIENTISTA",
-    "BI" "\xC3\x93" "LOGO", "QU" "\xC3\x8D" "MICO", "F" "\xC3\x8D" "SICO", "MATEM" "\xC3\x81" "TICO", "GE" "\xC3\x93" "LOGO",
-    "JUIZ", "DETETIVE", "ESPI" "\xC3\x83" "O", "SOLDADO", "GENERAL",
-    "JARDINEIRO", "PESCADOR", "AGRICULTOR", "LENHADOR", "MERGULHADOR",
-    "GAR" "\xC3\x87" "OM", "BARBEIRO", "CARTEIRO", "BIBLIOTEC" "\xC3\x81" "RIO", "TRADUTOR",
-};
+/* --- PROFISSOES (55 palavras) --- */
+static const char BLOB_PROFISSOES[] =
+    "MÉDICO\0"
+    "PROFESSOR\0"
+    "ENGENHEIRO\0"
+    "BOMBEIRO\0"
+    "POLICIAL\0"
+    "ADVOGADO\0"
+    "PILOTO\0"
+    "ASTRONAUTA\0"
+    "COZINHEIRO\0"
+    "PADEIRO\0"
+    "DENTISTA\0"
+    "VETERINARIO\0"
+    "ENFERMEIRO\0"
+    "FARMACEUTICO\0"
+    "PSICOLOGO\0"
+    "ARQUITETO\0"
+    "ELETRICISTA\0"
+    "ENCANADOR\0"
+    "MECÂNICO\0"
+    "MOTORISTA\0"
+    "JORNALISTA\0"
+    "FOTÓGRAFO\0"
+    "ATOR\0"
+    "DIRETOR\0"
+    "PRODUTOR\0"
+    "CANTOR\0"
+    "MÚSICO\0"
+    "DANÇARINO\0"
+    "ESCRITOR\0"
+    "POETA\0"
+    "PINTOR\0"
+    "ESCULTOR\0"
+    "DESIGNER\0"
+    "PROGRAMADOR\0"
+    "CIENTISTA\0"
+    "BIÓLOGO\0"
+    "QUÍMICO\0"
+    "FÍSICO\0"
+    "MATEMÁTICO\0"
+    "GEÓLOGO\0"
+    "JUIZ\0"
+    "DETETIVE\0"
+    "ESPIÃO\0"
+    "SOLDADO\0"
+    "GENERAL\0"
+    "JARDINEIRO\0"
+    "PESCADOR\0"
+    "AGRICULTOR\0"
+    "LENHADOR\0"
+    "MERGULHADOR\0"
+    "GARÇOM\0"
+    "BARBEIRO\0"
+    "CARTEIRO\0"
+    "BIBLIOTECÁRIO\0"
+    "TRADUTOR\0"
+;
+static const uint16_t OFFSETS_PROFISSOES[] = { 0, 8, 18, 29, 38, 47, 56, 63, 74, 85, 93, 102, 114, 125, 138, 148, 158, 170, 180, 190, 200, 211, 222, 227, 235, 244, 251, 259, 270, 279, 285, 292, 301, 310, 322, 332, 341, 350, 358, 370, 379, 384, 393, 401, 409, 417, 428, 437, 448, 457, 469, 477, 486, 495, 510 };
 
-/* -----------------------------------------------------------------------
- * Categoria 9: ESPORTES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_ESPORTES[] = {
-    "FUTEBOL", "BASQUETE", "NATA" "\xC3\x87" "\xC3\x83" "O", "SURF", "T" "\xC3\x8A" "NIS",
-    "V" "\xC3\x94" "LEI", "HANDEBOL", "BEISEBOL", "GOLFE", "BOXE",
-    "JUD" "\xC3\x94", "KARAT" "\xC3\x8A", "ESGRIMA", "ATLETISMO", "CICLISMO",
-    "SKATE", "PATINA" "\xC3\x87" "\xC3\x83" "O", "HIPISMO", "POLO AQU" "\xC3\x81" "TICO", "REMO",
-    "VELA", "CANOAGEM", "ESCALADA", "ALPINISMO", "PARKOUR",
-    "RUGBY", "CRICKET", "H" "\xC3\x93" "QUEI", "CURLING", "BOLICHE",
-    "BILHAR", "DARDOS", "XADREZ", "AUTOMOBILISMO", "MOTOCROSS",
-    "F" "\xC3\x93" "RMULA 1", "RALLY", "MARATONA", "TRIATLO", "CROSSFIT",
-    "CAPOEIRA", "MMA", "WRESTLING", "TIRO COM ARCO", "PENTATLO",
-    "BADMINTON", "PING PONG", "POLO", "LACROSSE", "SOFTBALL",
-    "MERGULHO", "WINDSURF", "KITESURF", "WAKEBOARD", "SNOWBOARD",
-};
+/* --- ESPORTES (55 palavras) --- */
+static const char BLOB_ESPORTES[] =
+    "FUTEBOL\0"
+    "BASQUETE\0"
+    "NATAÇÃO\0"
+    "SURF\0"
+    "TÊNIS\0"
+    "VÔLEI\0"
+    "HANDEBOL\0"
+    "BEISEBOL\0"
+    "GOLFE\0"
+    "BOXE\0"
+    "JUDÔ\0"
+    "KARATÊ\0"
+    "ESGRIMA\0"
+    "ATLETISMO\0"
+    "CICLISMO\0"
+    "SKATE\0"
+    "PATINAÇÃO\0"
+    "HIPISMO\0"
+    "POLO AQUÁTICO\0"
+    "REMO\0"
+    "VELA\0"
+    "CANOAGEM\0"
+    "ESCALADA\0"
+    "ALPINISMO\0"
+    "PARKOUR\0"
+    "RUGBY\0"
+    "CRICKET\0"
+    "HÓQUEI\0"
+    "CURLING\0"
+    "BOLICHE\0"
+    "BILHAR\0"
+    "DARDOS\0"
+    "XADREZ\0"
+    "AUTOMOBILISMO\0"
+    "MOTOCROSS\0"
+    "FÓRMULA 1\0"
+    "RALLY\0"
+    "MARATONA\0"
+    "TRIATLO\0"
+    "CROSSFIT\0"
+    "CAPOEIRA\0"
+    "MMA\0"
+    "WRESTLING\0"
+    "TIRO COM ARCO\0"
+    "PENTATLO\0"
+    "BADMINTON\0"
+    "PING PONG\0"
+    "POLO\0"
+    "LACROSSE\0"
+    "SOFTBALL\0"
+    "MERGULHO\0"
+    "WINDSURF\0"
+    "KITESURF\0"
+    "WAKEBOARD\0"
+    "SNOWBOARD\0"
+;
+static const uint16_t OFFSETS_ESPORTES[] = { 0, 8, 17, 27, 32, 39, 46, 55, 64, 70, 75, 81, 89, 97, 107, 116, 122, 134, 142, 157, 162, 167, 176, 185, 195, 203, 209, 217, 225, 233, 241, 248, 255, 262, 276, 286, 297, 303, 312, 320, 329, 338, 342, 352, 366, 375, 385, 395, 400, 409, 418, 427, 436, 445, 455 };
 
-/* -----------------------------------------------------------------------
- * Categoria 10: PARTES DO CORPO
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_CORPO[] = {
-    "M" "\xC3\x83" "O", "OLHO", "JOELHO", "COTOVELO", "CABE" "\xC3\x87" "A",
-    "P" "\xC3\x89", "ORELHA", "NARIZ", "BOCA", "DEDO",
-    "BRA" "\xC3\x87" "O", "PERNA", "OMBRO", "PESCO" "\xC3\x87" "O", "COSTA",
-    "BARRIGA", "PEITO", "QUADRIL", "TORNOZELO", "PULSO",
-    "COXA", "PANTURRILHA", "CALCANHAR", "QUEIXO", "TESTA",
-    "SOBRANCELHA", "C" "\xC3\x8D" "LIOS", "L" "\xC3\x81" "BIO", "L" "\xC3\x8D" "NGUA", "DENTE",
-    "UNHA", "CABELO", "CINTURA", "CANELA", "POLEGAR",
-    "INDICADOR", "MINDINHO", "PALMA", "NUCA", "AXILA",
-    "CORA" "\xC3\x87" "\xC3\x83" "O", "PULM" "\xC3\x83" "O", "F" "\xC3\x8D" "GADO", "EST" "\xC3\x94" "MAGO", "C" "\xC3\x89" "REBRO",
-    "RIM", "INTESTINO", "COLUNA", "COSTELA", "CLAV" "\xC3\x8D" "CULA",
-    "F" "\xC3\x8A" "MUR", "MAND" "\xC3\x8D" "BULA", "RETINA", "TRAQUEIA", "DIAFRAGMA",
-};
+/* --- CORPO (55 palavras) --- */
+static const char BLOB_CORPO[] =
+    "MÃO\0"
+    "OLHO\0"
+    "JOELHO\0"
+    "COTOVELO\0"
+    "CABEÇA\0"
+    "PÉ\0"
+    "ORELHA\0"
+    "NARIZ\0"
+    "BOCA\0"
+    "DEDO\0"
+    "BRAÇO\0"
+    "PERNA\0"
+    "OMBRO\0"
+    "PESCOÇO\0"
+    "COSTA\0"
+    "BARRIGA\0"
+    "PEITO\0"
+    "QUADRIL\0"
+    "TORNOZELO\0"
+    "PULSO\0"
+    "COXA\0"
+    "PANTURRILHA\0"
+    "CALCANHAR\0"
+    "QUEIXO\0"
+    "TESTA\0"
+    "SOBRANCELHA\0"
+    "CÍLIOS\0"
+    "LÁBIO\0"
+    "LÍNGUA\0"
+    "DENTE\0"
+    "UNHA\0"
+    "CABELO\0"
+    "CINTURA\0"
+    "CANELA\0"
+    "POLEGAR\0"
+    "INDICADOR\0"
+    "MINDINHO\0"
+    "PALMA\0"
+    "NUCA\0"
+    "AXILA\0"
+    "CORAÇÃO\0"
+    "PULMÃO\0"
+    "FÍGADO\0"
+    "ESTÔMAGO\0"
+    "CÉREBRO\0"
+    "RIM\0"
+    "INTESTINO\0"
+    "COLUNA\0"
+    "COSTELA\0"
+    "CLAVÍCULA\0"
+    "FÊMUR\0"
+    "MANDÍBULA\0"
+    "RETINA\0"
+    "TRAQUEIA\0"
+    "DIAFRAGMA\0"
+;
+static const uint16_t OFFSETS_CORPO[] = { 0, 5, 10, 17, 26, 34, 38, 45, 51, 56, 61, 68, 74, 80, 89, 95, 103, 109, 117, 127, 133, 138, 150, 160, 167, 173, 185, 193, 200, 208, 214, 219, 226, 234, 241, 249, 259, 268, 274, 279, 285, 295, 303, 311, 321, 330, 334, 344, 351, 359, 370, 377, 388, 395, 404 };
 
-/* -----------------------------------------------------------------------
- * Categoria 11: HERÓIS (Marvel + DC misturados)
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_HEROIS[] = {
-    "HOMEM-ARANHA", "BATMAN", "SUPERMAN", "MULHER-MARAVILHA", "HULK",
-    "FLASH", "THOR", "LANTERNA VERDE", "CAPIT" "\xC3\x83" "O AM" "\xC3\x89" "RICA", "HOMEM DE FERRO",
-    "AQUAMAN", "GAVI" "\xC3\x83" "O ARQUEIRO", "VI" "\xC3\x9A" "VA NEGRA", "PANTERA NEGRA", "WOLVERINE",
-    "DOUTOR ESTRANHO", "FALC" "\xC3\x83" "O", "VIS" "\xC3\x83" "O", "FEITICEIRA ESCARLATE", "ANT-MAN",
-    "DEADPOOL", "GAMBIT", "TEMPESTADE", "CICLOPE", "JEAN GREY",
-    "PROFESSOR X", "MAGNETO", "NOTURNO", "COLOSSUS", "VAMPIRA",
-    "SHAZAM", "SUPERGIRL", "BATGIRL", "CIBORGUE", "ARQUEIRO VERDE",
-    "CAN" "\xC3\x81" "RIO NEGRO", "JOHN CONSTANTINE", "RORSCHACH", "DEMOLIDOR", "LUKE CAGE",
-    "JESSICA JONES", "PUNHO DE FERRO", "SENHOR DESTINO", "AJAX", "M" "\xC3\x8D" "STICA",
-    "CAPIT" "\xC3\x83" " MARVEL", "HOMEM-FORMIGA", "VESPA", "FALC" "\xC3\x83" "O NOTURNO", "ROBIN",
-    "BLADE", "HELLBOY", "ROCKET", "GROOT", "GAMORA",
-    "STAR-LORD", "DRAX", "NEBULOSA", "ADAM WARLOCK", "MILES MORALES",
-};
+/* --- HEROIS (60 palavras) --- */
+static const char BLOB_HEROIS[] =
+    "HOMEM-ARANHA\0"
+    "BATMAN\0"
+    "SUPERMAN\0"
+    "MULHER-MARAVILHA\0"
+    "HULK\0"
+    "FLASH\0"
+    "THOR\0"
+    "LANTERNA VERDE\0"
+    "CAPITÃO AMÉRICA\0"
+    "HOMEM DE FERRO\0"
+    "AQUAMAN\0"
+    "GAVIÃO ARQUEIRO\0"
+    "VIÚVA NEGRA\0"
+    "PANTERA NEGRA\0"
+    "WOLVERINE\0"
+    "DOUTOR ESTRANHO\0"
+    "FALCÃO\0"
+    "VISÃO\0"
+    "FEITICEIRA ESCARLATE\0"
+    "ANT-MAN\0"
+    "DEADPOOL\0"
+    "GAMBIT\0"
+    "TEMPESTADE\0"
+    "CICLOPE\0"
+    "JEAN GREY\0"
+    "PROFESSOR X\0"
+    "MAGNETO\0"
+    "NOTURNO\0"
+    "COLOSSUS\0"
+    "VAMPIRA\0"
+    "SHAZAM\0"
+    "SUPERGIRL\0"
+    "BATGIRL\0"
+    "CIBORGUE\0"
+    "ARQUEIRO VERDE\0"
+    "CANÁRIO NEGRO\0"
+    "JOHN CONSTANTINE\0"
+    "RORSCHACH\0"
+    "DEMOLIDOR\0"
+    "LUKE CAGE\0"
+    "JESSICA JONES\0"
+    "PUNHO DE FERRO\0"
+    "SENHOR DESTINO\0"
+    "AJAX\0"
+    "MÍSTICA\0"
+    "CAPITÃ MARVEL\0"
+    "HOMEM-FORMIGA\0"
+    "VESPA\0"
+    "FALCÃO NOTURNO\0"
+    "ROBIN\0"
+    "BLADE\0"
+    "HELLBOY\0"
+    "ROCKET\0"
+    "GROOT\0"
+    "GAMORA\0"
+    "STAR-LORD\0"
+    "DRAX\0"
+    "NEBULOSA\0"
+    "ADAM WARLOCK\0"
+    "MILES MORALES\0"
+;
+static const uint16_t OFFSETS_HEROIS[] = { 0, 13, 20, 29, 46, 51, 57, 62, 77, 95, 110, 118, 135, 148, 162, 172, 188, 196, 203, 224, 232, 241, 248, 259, 267, 277, 289, 297, 305, 314, 322, 329, 339, 347, 356, 371, 386, 403, 413, 423, 433, 447, 462, 477, 482, 491, 506, 520, 526, 542, 548, 554, 562, 569, 575, 582, 592, 597, 606, 619 };
 
-/* -----------------------------------------------------------------------
- * Categoria 12: FILMES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_FILMES[] = {
-    "TITANIC", "MATRIX", "AVATAR", "FROZEN", "SHREK",
-    "PROCURANDO NEMO", "TOY STORY", "REI LE" "\xC3\x83" "O", "JURASSIC PARK", "HARRY POTTER",
-    "SENHOR DOS AN" "\xC3\x89" "IS", "VINGADORES", "STAR WARS", "BATMAN", "HOMEM-ARANHA",
-    "INTERESTELAR", "INCEPTION", "FORREST GUMP", "GLADIADOR", "CORALINE",
-    "UP", "WALL-E", "RATATOUILLE", "COCO", "MOANA",
-    "ALADDIN", "MULAN", "TARZAN", "BAMBI", "DUMBO",
-    "CORINGA", "PANTERA NEGRA", "GUARDI" "\xC3\x95" "ES DA GAL" "\xC3\x81" "XIA", "HOMEM DE FERRO", "THOR",
-    "DE VOLTA PARA O FUTURO", "E.T.", "TUBAR" "\xC3\x83" "O", "INDIANA JONES", "ROCKY",
-    "RAMBO", "TERMINATOR", "ALIEN", "PREDADOR", "ROBOCOP",
-    "MAD MAX", "TOP GUN", "MISS" "\xC3\x83" "O IMPOSS" "\xC3\x8D" "VEL", "VELOZES E FURIOSOS", "JOHN WICK",
-    "A ORIGEM", "O PODEROSO CHEF" "\xC3\x83" "O", "CLUBE DA LUTA", "BASTARDOS INGL" "\xC3\x93" "RIOS", "DJANGO",
-    "ENCANTO", "DIVERTIDA MENTE", "SOUL", "LUCA", "ELEMENTOS",
-};
+/* --- FILMES (60 palavras) --- */
+static const char BLOB_FILMES[] =
+    "TITANIC\0"
+    "MATRIX\0"
+    "AVATAR\0"
+    "FROZEN\0"
+    "SHREK\0"
+    "PROCURANDO NEMO\0"
+    "TOY STORY\0"
+    "REI LEÃO\0"
+    "JURASSIC PARK\0"
+    "HARRY POTTER\0"
+    "SENHOR DOS ANÉIS\0"
+    "VINGADORES\0"
+    "STAR WARS\0"
+    "BATMAN\0"
+    "HOMEM-ARANHA\0"
+    "INTERESTELAR\0"
+    "INCEPTION\0"
+    "FORREST GUMP\0"
+    "GLADIADOR\0"
+    "CORALINE\0"
+    "UP\0"
+    "WALL-E\0"
+    "RATATOUILLE\0"
+    "COCO\0"
+    "MOANA\0"
+    "ALADDIN\0"
+    "MULAN\0"
+    "TARZAN\0"
+    "BAMBI\0"
+    "DUMBO\0"
+    "CORINGA\0"
+    "PANTERA NEGRA\0"
+    "GUARDIÕES DA GALÁXIA\0"
+    "HOMEM DE FERRO\0"
+    "THOR\0"
+    "DE VOLTA PARA O FUTURO\0"
+    "E.T.\0"
+    "TUBARÃO\0"
+    "INDIANA JONES\0"
+    "ROCKY\0"
+    "RAMBO\0"
+    "TERMINATOR\0"
+    "ALIEN\0"
+    "PREDADOR\0"
+    "ROBOCOP\0"
+    "MAD MAX\0"
+    "TOP GUN\0"
+    "MISSÃO IMPOSSÍVEL\0"
+    "VELOZES E FURIOSOS\0"
+    "JOHN WICK\0"
+    "A ORIGEM\0"
+    "O PODEROSO CHEFÃO\0"
+    "CLUBE DA LUTA\0"
+    "BASTARDOS INGLÓRIOS\0"
+    "DJANGO\0"
+    "ENCANTO\0"
+    "DIVERTIDA MENTE\0"
+    "SOUL\0"
+    "LUCA\0"
+    "ELEMENTOS\0"
+;
+static const uint16_t OFFSETS_FILMES[] = { 0, 8, 15, 22, 29, 35, 51, 61, 71, 85, 98, 116, 127, 137, 144, 157, 170, 180, 193, 203, 212, 215, 222, 234, 239, 245, 253, 259, 266, 272, 278, 286, 300, 323, 338, 343, 366, 371, 380, 394, 400, 406, 417, 423, 432, 440, 448, 456, 476, 495, 505, 514, 533, 547, 568, 575, 583, 599, 604, 609 };
 
-/* -----------------------------------------------------------------------
- * Categoria 13: SÉRIES
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_SERIES[] = {
-    "FRIENDS", "BREAKING BAD", "STRANGER THINGS", "GAME OF THRONES", "THE OFFICE",
-    "LA CASA DE PAPEL", "NARCOS", "SQUID GAME", "WANDAVISION", "LOKI",
-    "MANDALORIAN", "PEAKY BLINDERS", "VIKINGS", "THE WITCHER", "SHERLOCK",
-    "MR. ROBOT", "BLACK MIRROR", "DARK", "CHERNOBYL", "BAND OF BROTHERS",
-    "LOST", "PRISON BREAK", "WALKING DEAD", "DEXTER", "HOUSE",
-    "GREY'S ANATOMY", "SUITS", "HOW I MET YOUR MOTHER", "BIG BANG THEORY", "SEINFELD",
-    "THE BOYS", "INVINCIBLE", "ARCANE", "ONE PIECE", "ATTACK ON TITAN",
-    "NARUTO", "DRAGON BALL", "DEMON SLAYER", "JUJUTSU KAISEN", "SPY X FAMILY",
-    "THE LAST OF US", "SUCCESSION", "EUPHORIA", "WEDNESDAY", "LUPIN",
-    "ROUND 6", "COBRA KAI", "YELLOWSTONE", "OZARK", "BETTER CALL SAUL",
-    "SEVERANCE", "TED LASSO", "BRIDGERTON", "SANDMAN", "RINGS OF POWER",
-};
+/* --- SERIES (55 palavras) --- */
+static const char BLOB_SERIES[] =
+    "FRIENDS\0"
+    "BREAKING BAD\0"
+    "STRANGER THINGS\0"
+    "GAME OF THRONES\0"
+    "THE OFFICE\0"
+    "LA CASA DE PAPEL\0"
+    "NARCOS\0"
+    "SQUID GAME\0"
+    "WANDAVISION\0"
+    "LOKI\0"
+    "MANDALORIAN\0"
+    "PEAKY BLINDERS\0"
+    "VIKINGS\0"
+    "THE WITCHER\0"
+    "SHERLOCK\0"
+    "MR. ROBOT\0"
+    "BLACK MIRROR\0"
+    "DARK\0"
+    "CHERNOBYL\0"
+    "BAND OF BROTHERS\0"
+    "LOST\0"
+    "PRISON BREAK\0"
+    "WALKING DEAD\0"
+    "DEXTER\0"
+    "HOUSE\0"
+    "GREY'S ANATOMY\0"
+    "SUITS\0"
+    "HOW I MET YOUR MOTHER\0"
+    "BIG BANG THEORY\0"
+    "SEINFELD\0"
+    "THE BOYS\0"
+    "INVINCIBLE\0"
+    "ARCANE\0"
+    "ONE PIECE\0"
+    "ATTACK ON TITAN\0"
+    "NARUTO\0"
+    "DRAGON BALL\0"
+    "DEMON SLAYER\0"
+    "JUJUTSU KAISEN\0"
+    "SPY X FAMILY\0"
+    "THE LAST OF US\0"
+    "SUCCESSION\0"
+    "EUPHORIA\0"
+    "WEDNESDAY\0"
+    "LUPIN\0"
+    "ROUND 6\0"
+    "COBRA KAI\0"
+    "YELLOWSTONE\0"
+    "OZARK\0"
+    "BETTER CALL SAUL\0"
+    "SEVERANCE\0"
+    "TED LASSO\0"
+    "BRIDGERTON\0"
+    "SANDMAN\0"
+    "RINGS OF POWER\0"
+;
+static const uint16_t OFFSETS_SERIES[] = { 0, 8, 21, 37, 53, 64, 81, 88, 99, 111, 116, 128, 143, 151, 163, 172, 182, 195, 200, 210, 227, 232, 245, 258, 265, 271, 286, 292, 314, 330, 339, 348, 359, 366, 376, 392, 399, 411, 424, 439, 452, 467, 478, 487, 497, 503, 511, 521, 533, 539, 556, 566, 576, 587, 595 };
 
-/* -----------------------------------------------------------------------
- * Categoria 14: JOGOS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_JOGOS[] = {
-    "MINECRAFT", "XADREZ", "UNO", "MARIO KART", "FORTNITE",
-    "AMONG US", "ROBLOX", "FIFA", "GTA", "ZELDA",
-    "POKEMON", "TETRIS", "PACMAN", "SONIC", "SUPER MARIO",
-    "GOD OF WAR", "HALO", "CALL OF DUTY", "OVERWATCH", "VALORANT",
-    "LEAGUE OF LEGENDS", "DOTA", "COUNTER-STRIKE", "APEX LEGENDS", "PUBG",
-    "ELDEN RING", "DARK SOULS", "SKYRIM", "FALLOUT", "THE SIMS",
-    "ANIMAL CROSSING", "STARDEW VALLEY", "TERRARIA", "RESIDENT EVIL", "SILENT HILL",
-    "CRASH BANDICOOT", "SPYRO", "DONKEY KONG", "KIRBY", "MEGAMAN",
-    "STREET FIGHTER", "MORTAL KOMBAT", "TEKKEN", "SMASH BROS", "GUILTY GEAR",
-    "BANCO IMOBILI" "\xC3\x81" "RIO", "DETETIVE", "WAR", "LUDO", "DOMIN" "\xC3\x93",
-    "BARALHO", "TRUCO", "DAMA", "GAM" "\xC3\x83" "O", "JOGO DA VIDA",
-};
+/* --- JOGOS (55 palavras) --- */
+static const char BLOB_JOGOS[] =
+    "MINECRAFT\0"
+    "XADREZ\0"
+    "UNO\0"
+    "MARIO KART\0"
+    "FORTNITE\0"
+    "AMONG US\0"
+    "ROBLOX\0"
+    "FIFA\0"
+    "GTA\0"
+    "ZELDA\0"
+    "POKEMON\0"
+    "TETRIS\0"
+    "PACMAN\0"
+    "SONIC\0"
+    "SUPER MARIO\0"
+    "GOD OF WAR\0"
+    "HALO\0"
+    "CALL OF DUTY\0"
+    "OVERWATCH\0"
+    "VALORANT\0"
+    "LEAGUE OF LEGENDS\0"
+    "DOTA\0"
+    "COUNTER-STRIKE\0"
+    "APEX LEGENDS\0"
+    "PUBG\0"
+    "ELDEN RING\0"
+    "DARK SOULS\0"
+    "SKYRIM\0"
+    "FALLOUT\0"
+    "THE SIMS\0"
+    "ANIMAL CROSSING\0"
+    "STARDEW VALLEY\0"
+    "TERRARIA\0"
+    "RESIDENT EVIL\0"
+    "SILENT HILL\0"
+    "CRASH BANDICOOT\0"
+    "SPYRO\0"
+    "DONKEY KONG\0"
+    "KIRBY\0"
+    "MEGAMAN\0"
+    "STREET FIGHTER\0"
+    "MORTAL KOMBAT\0"
+    "TEKKEN\0"
+    "SMASH BROS\0"
+    "GUILTY GEAR\0"
+    "BANCO IMOBILIÁRIO\0"
+    "DETETIVE\0"
+    "WAR\0"
+    "LUDO\0"
+    "DOMINÓ\0"
+    "BARALHO\0"
+    "TRUCO\0"
+    "DAMA\0"
+    "GAMÃO\0"
+    "JOGO DA VIDA\0"
+;
+static const uint16_t OFFSETS_JOGOS[] = { 0, 10, 17, 21, 32, 41, 50, 57, 62, 66, 72, 80, 87, 94, 100, 112, 123, 128, 141, 151, 160, 178, 183, 198, 211, 216, 227, 238, 245, 253, 262, 278, 293, 302, 316, 328, 344, 350, 362, 368, 376, 391, 405, 412, 423, 435, 454, 463, 467, 472, 480, 488, 494, 499, 506 };
 
-/* -----------------------------------------------------------------------
- * Categoria 15: PERSONAGENS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_PERSONAGENS[] = {
-    "MICKEY", "SHREK", "HARRY POTTER", "GOKU", "NARUTO",
-    "PIKACHU", "BOB ESPONJA", "HOMER SIMPSON", "SCOOBY-DOO", "TOM E JERRY",
-    "BUZZ LIGHTYEAR", "WOODY", "NEMO", "SIMBA", "ELSA",
-    "CINDERELA", "BRANCA DE NEVE", "RAPUNZEL", "BELA", "ARIEL",
-    "PETER PAN", "PIN" "\xC3\x93" "QUIO", "BAMBI", "DUMBO", "ALADDIN",
-    "GANDALF", "FRODO", "DARTH VADER", "YODA", "CHEWBACCA",
-    "INDIANA JONES", "JAMES BOND", "SHERLOCK HOLMES", "ROBIN HOOD", "ZORRO",
-    "LUFFY", "GOLLUM", "THANOS", "VOLDEMORT", "CORINGA",
-    "WILLY WONKA", "FORREST GUMP", "JACK SPARROW", "JOHN WICK", "NEO",
-    "TOTORO", "ASTRO BOY", "SAILOR MOON", "SAKURA", "VEGETA",
-    "CHAPOLIN", "CHAVES", "MAFALDA", "SNOOPY", "GARFIELD",
-};
+/* --- PERSONAGENS (55 palavras) --- */
+static const char BLOB_PERSONAGENS[] =
+    "MICKEY\0"
+    "SHREK\0"
+    "HARRY POTTER\0"
+    "GOKU\0"
+    "NARUTO\0"
+    "PIKACHU\0"
+    "BOB ESPONJA\0"
+    "HOMER SIMPSON\0"
+    "SCOOBY-DOO\0"
+    "TOM E JERRY\0"
+    "BUZZ LIGHTYEAR\0"
+    "WOODY\0"
+    "NEMO\0"
+    "SIMBA\0"
+    "ELSA\0"
+    "CINDERELA\0"
+    "BRANCA DE NEVE\0"
+    "RAPUNZEL\0"
+    "BELA\0"
+    "ARIEL\0"
+    "PETER PAN\0"
+    "PINÓQUIO\0"
+    "BAMBI\0"
+    "DUMBO\0"
+    "ALADDIN\0"
+    "GANDALF\0"
+    "FRODO\0"
+    "DARTH VADER\0"
+    "YODA\0"
+    "CHEWBACCA\0"
+    "INDIANA JONES\0"
+    "JAMES BOND\0"
+    "SHERLOCK HOLMES\0"
+    "ROBIN HOOD\0"
+    "ZORRO\0"
+    "LUFFY\0"
+    "GOLLUM\0"
+    "THANOS\0"
+    "VOLDEMORT\0"
+    "CORINGA\0"
+    "WILLY WONKA\0"
+    "FORREST GUMP\0"
+    "JACK SPARROW\0"
+    "JOHN WICK\0"
+    "NEO\0"
+    "TOTORO\0"
+    "ASTRO BOY\0"
+    "SAILOR MOON\0"
+    "SAKURA\0"
+    "VEGETA\0"
+    "CHAPOLIN\0"
+    "CHAVES\0"
+    "MAFALDA\0"
+    "SNOOPY\0"
+    "GARFIELD\0"
+;
+static const uint16_t OFFSETS_PERSONAGENS[] = { 0, 7, 13, 26, 31, 38, 46, 58, 72, 83, 95, 110, 116, 121, 127, 132, 142, 157, 166, 171, 177, 187, 197, 203, 209, 217, 225, 231, 243, 248, 258, 272, 283, 299, 310, 316, 322, 329, 336, 346, 354, 366, 379, 392, 402, 406, 413, 423, 435, 442, 449, 458, 465, 473, 480 };
 
-/* -----------------------------------------------------------------------
- * Categoria 16: MARCAS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_MARCAS[] = {
-    "NIKE", "APPLE", "COCA-COLA", "GOOGLE", "AMAZON",
-    "MICROSOFT", "SAMSUNG", "TOYOTA", "FERRARI", "ADIDAS",
-    "MCDONALDS", "STARBUCKS", "NETFLIX", "SPOTIFY", "YOUTUBE",
-    "INSTAGRAM", "TIKTOK", "WHATSAPP", "TWITTER", "FACEBOOK",
-    "LEGO", "DISNEY", "NINTENDO", "PLAYSTATION", "XBOX",
-    "GUCCI", "LOUIS VUITTON", "ZARA", "PUMA", "REEBOK",
-    "BMW", "MERCEDES", "AUDI", "PORSCHE", "LAMBORGHINI",
-    "ROLEX", "RAY-BAN", "CHANEL", "PRADA", "DIOR",
-    "PEPSI", "NESTL" "\xC3\x89", "NUTELLA", "OREO", "DORITOS",
-    "UBER", "AIRBNB", "TESLA", "SPACEX", "NASA",
-    "HAVAIANAS", "NATURA", "AMBEV", "GLOBO", "PETROBRAS",
-};
+/* --- MARCAS (55 palavras) --- */
+static const char BLOB_MARCAS[] =
+    "NIKE\0"
+    "APPLE\0"
+    "COCA-COLA\0"
+    "GOOGLE\0"
+    "AMAZON\0"
+    "MICROSOFT\0"
+    "SAMSUNG\0"
+    "TOYOTA\0"
+    "FERRARI\0"
+    "ADIDAS\0"
+    "MCDONALDS\0"
+    "STARBUCKS\0"
+    "NETFLIX\0"
+    "SPOTIFY\0"
+    "YOUTUBE\0"
+    "INSTAGRAM\0"
+    "TIKTOK\0"
+    "WHATSAPP\0"
+    "TWITTER\0"
+    "FACEBOOK\0"
+    "LEGO\0"
+    "DISNEY\0"
+    "NINTENDO\0"
+    "PLAYSTATION\0"
+    "XBOX\0"
+    "GUCCI\0"
+    "LOUIS VUITTON\0"
+    "ZARA\0"
+    "PUMA\0"
+    "REEBOK\0"
+    "BMW\0"
+    "MERCEDES\0"
+    "AUDI\0"
+    "PORSCHE\0"
+    "LAMBORGHINI\0"
+    "ROLEX\0"
+    "RAY-BAN\0"
+    "CHANEL\0"
+    "PRADA\0"
+    "DIOR\0"
+    "PEPSI\0"
+    "NESTLÉ\0"
+    "NUTELLA\0"
+    "OREO\0"
+    "DORITOS\0"
+    "UBER\0"
+    "AIRBNB\0"
+    "TESLA\0"
+    "SPACEX\0"
+    "NASA\0"
+    "HAVAIANAS\0"
+    "NATURA\0"
+    "AMBEV\0"
+    "GLOBO\0"
+    "PETROBRAS\0"
+;
+static const uint16_t OFFSETS_MARCAS[] = { 0, 5, 11, 21, 28, 35, 45, 53, 60, 68, 75, 85, 95, 103, 111, 119, 129, 136, 145, 153, 162, 167, 174, 183, 195, 200, 206, 220, 225, 230, 237, 241, 250, 255, 263, 275, 281, 289, 296, 302, 307, 313, 321, 329, 334, 342, 347, 354, 360, 367, 372, 382, 389, 395, 401 };
 
-/* -----------------------------------------------------------------------
- * Categoria 17: VEÍCULOS
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_VEICULOS[] = {
-    "CARRO", "HELIC" "\xC3\x93" "PTERO", "BICICLETA", "TREM", "NAVIO",
-    "AVI" "\xC3\x83" "O", "MOTO", "\xC3\x94" "NIBUS", "METR" "\xC3\x94", "BONDE",
-    "BARCO", "VELEIRO", "LANCHA", "IATE", "SUBMARINO",
-    "FOGUETE", "PATINETE", "SKATE", "TRICICLO", "QUADRICICLO",
-    "CAMINH" "\xC3\x83" "O", "VAN", "AMBUL" "\xC3\x82" "NCIA", "BOMBEIRO", "TRATOR",
-    "ESCAVADEIRA", "EMPILHADEIRA", "JIPE", "LIMUSINE", "T" "\xC3\x81" "XI",
-    "UBER", "CANOA", "CAIAQUE", "BALSA", "CRUZEIRO",
-    "PARAGLIDER", "DIRIG" "\xC3\x8D" "VEL", "BAL" "\xC3\x83" "O", "TELEF" "\xC3\x89" "RICO", "MONOTRILHO",
-    "SEGWAY", "HOVERBOARD", "JET SKI", "BUGGY", "KART",
-    "CHARRETE", "TREN" "\xC3\x93", "CARRO" "\xC3\x87" "A", "G" "\xC3\x94" "NDOLA", "BALSINHA",
-    "PICK-UP", "CONVERS" "\xC3\x8D" "VEL", "SUV", "KOMBI", "FUSCA",
-};
+/* --- VEICULOS (55 palavras) --- */
+static const char BLOB_VEICULOS[] =
+    "CARRO\0"
+    "HELICÓPTERO\0"
+    "BICICLETA\0"
+    "TREM\0"
+    "NAVIO\0"
+    "AVIÃO\0"
+    "MOTO\0"
+    "ÔNIBUS\0"
+    "METRÔ\0"
+    "BONDE\0"
+    "BARCO\0"
+    "VELEIRO\0"
+    "LANCHA\0"
+    "IATE\0"
+    "SUBMARINO\0"
+    "FOGUETE\0"
+    "PATINETE\0"
+    "SKATE\0"
+    "TRICICLO\0"
+    "QUADRICICLO\0"
+    "CAMINHÃO\0"
+    "VAN\0"
+    "AMBULÂNCIA\0"
+    "BOMBEIRO\0"
+    "TRATOR\0"
+    "ESCAVADEIRA\0"
+    "EMPILHADEIRA\0"
+    "JIPE\0"
+    "LIMUSINE\0"
+    "TÁXI\0"
+    "UBER\0"
+    "CANOA\0"
+    "CAIAQUE\0"
+    "BALSA\0"
+    "CRUZEIRO\0"
+    "PARAGLIDER\0"
+    "DIRIGÍVEL\0"
+    "BALÃO\0"
+    "TELEFÉRICO\0"
+    "MONOTRILHO\0"
+    "SEGWAY\0"
+    "HOVERBOARD\0"
+    "JET SKI\0"
+    "BUGGY\0"
+    "KART\0"
+    "CHARRETE\0"
+    "TRENÓ\0"
+    "CARROÇA\0"
+    "GÔNDOLA\0"
+    "BALSINHA\0"
+    "PICK-UP\0"
+    "CONVERSÍVEL\0"
+    "SUV\0"
+    "KOMBI\0"
+    "FUSCA\0"
+;
+static const uint16_t OFFSETS_VEICULOS[] = { 0, 6, 19, 29, 34, 40, 47, 52, 60, 67, 73, 79, 87, 94, 99, 109, 117, 126, 132, 141, 153, 163, 167, 179, 188, 195, 207, 220, 225, 234, 240, 245, 251, 259, 265, 274, 285, 296, 303, 315, 326, 333, 344, 352, 358, 363, 372, 379, 388, 397, 406, 414, 427, 431, 437 };
 
-/* -----------------------------------------------------------------------
- * Categoria 18: TECNOLOGIA
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_TECNOLOGIA[] = {
-    "CELULAR", "COMPUTADOR", "DRONE", "BLUETOOTH", "WI-FI",
-    "TABLET", "NOTEBOOK", "SMARTWATCH", "FONE DE OUVIDO", "CAIXA DE SOM",
-    "IMPRESSORA", "SCANNER", "WEBCAM", "PENDRIVE", "HD EXTERNO",
-    "MONITOR", "TECLADO", "MOUSE", "CONTROLE", "PROJETOR",
-    "GPS", "ALEXA", "SIRI", "CHATGPT", "ROB" "\xC3\x94",
-    "INTELIG" "\xC3\x8A" "NCIA ARTIFICIAL", "REALIDADE VIRTUAL", "REALIDADE AUMENTADA", "HOLOGRAFIA", "5G",
-    "BITCOIN", "BLOCKCHAIN", "NFT", "STREAMING", "PODCAST",
-    "PIXEL", "ALGORITMO", "APLICATIVO", "REDE SOCIAL", "NUVEM",
-    "SERVIDOR", "FIREWALL", "ANTIVIRUS", "HACKER", "CRIPTOGRAFIA",
-    "QR CODE", "RECONHECIMENTO FACIAL", "SENSOR", "MICROCHIP", "FIBRA " "\xC3\x93" "PTICA",
-    "SAT" "\xC3\x89" "LITE", "TELESC" "\xC3\x93" "PIO", "MICROSC" "\xC3\x93" "PIO", "LASER", "LED",
-};
+/* --- TECNOLOGIA (55 palavras) --- */
+static const char BLOB_TECNOLOGIA[] =
+    "CELULAR\0"
+    "COMPUTADOR\0"
+    "DRONE\0"
+    "BLUETOOTH\0"
+    "WI-FI\0"
+    "TABLET\0"
+    "NOTEBOOK\0"
+    "SMARTWATCH\0"
+    "FONE DE OUVIDO\0"
+    "CAIXA DE SOM\0"
+    "IMPRESSORA\0"
+    "SCANNER\0"
+    "WEBCAM\0"
+    "PENDRIVE\0"
+    "HD EXTERNO\0"
+    "MONITOR\0"
+    "TECLADO\0"
+    "MOUSE\0"
+    "CONTROLE\0"
+    "PROJETOR\0"
+    "GPS\0"
+    "ALEXA\0"
+    "SIRI\0"
+    "CHATGPT\0"
+    "ROBÔ\0"
+    "INTELIGÊNCIA ARTIFICIAL\0"
+    "REALIDADE VIRTUAL\0"
+    "REALIDADE AUMENTADA\0"
+    "HOLOGRAFIA\0"
+    "5G\0"
+    "BITCOIN\0"
+    "BLOCKCHAIN\0"
+    "NFT\0"
+    "STREAMING\0"
+    "PODCAST\0"
+    "PIXEL\0"
+    "ALGORITMO\0"
+    "APLICATIVO\0"
+    "REDE SOCIAL\0"
+    "NUVEM\0"
+    "SERVIDOR\0"
+    "FIREWALL\0"
+    "ANTIVIRUS\0"
+    "HACKER\0"
+    "CRIPTOGRAFIA\0"
+    "QR CODE\0"
+    "RECONHECIMENTO FACIAL\0"
+    "SENSOR\0"
+    "MICROCHIP\0"
+    "FIBRA ÓPTICA\0"
+    "SATÉLITE\0"
+    "TELESCÓPIO\0"
+    "MICROSCÓPIO\0"
+    "LASER\0"
+    "LED\0"
+;
+static const uint16_t OFFSETS_TECNOLOGIA[] = { 0, 8, 19, 25, 35, 41, 48, 57, 68, 83, 96, 107, 115, 122, 131, 142, 150, 158, 164, 173, 182, 186, 192, 197, 205, 211, 236, 254, 274, 285, 288, 296, 307, 311, 321, 329, 335, 345, 356, 368, 374, 383, 392, 402, 409, 422, 430, 452, 459, 469, 483, 493, 505, 518, 524 };
 
-/* -----------------------------------------------------------------------
- * Categoria 19: NATUREZA
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_NATUREZA[] = {
-    "CACHOEIRA", "VULC" "\xC3\x83" "O", "ARCO-" "\xC3\x8D" "RIS", "AURORA BOREAL", "TERREMOTO",
-    "FURAC" "\xC3\x83" "O", "TORNADO", "TSUNAMI", "RAIO", "REL" "\xC3\x82" "MPAGO",
-    "SOL", "LUA", "ESTRELA", "COMETA", "METEORO",
-    "\xC3\x81" "RVORE", "FLOR", "COGUMELO", "CACTO", "SAMAMBAIA",
-    "MONTANHA", "VALE", "CANYON", "GELEIRA", "ICEBERG",
-    "OCEANO", "RIO", "LAGO", "LAGOA", "P" "\xC3\x82" "NTANO",
-    "DESERTO", "SAVANA", "TUNDRA", "FLORESTA", "SELVA",
-    "CORAL", "RECIFE", "GRUTA", "CAVERNA", "CRATERA",
-    "DIAMANTE", "OURO", "CRISTAL", "\xC3\x82" "MBAR", "PEDRA",
-    "AREIA", "ARGILA", "GRANITO", "M" "\xC3\x81" "RMORE", "QUARTZO",
-    "ORVALHO", "NEBLINA", "GRANIZO", "NEVE", "GEADA",
-};
+/* --- NATUREZA (55 palavras) --- */
+static const char BLOB_NATUREZA[] =
+    "CACHOEIRA\0"
+    "VULCÃO\0"
+    "ARCO-ÍRIS\0"
+    "AURORA BOREAL\0"
+    "TERREMOTO\0"
+    "FURACÃO\0"
+    "TORNADO\0"
+    "TSUNAMI\0"
+    "RAIO\0"
+    "RELÂMPAGO\0"
+    "SOL\0"
+    "LUA\0"
+    "ESTRELA\0"
+    "COMETA\0"
+    "METEORO\0"
+    "ÁRVORE\0"
+    "FLOR\0"
+    "COGUMELO\0"
+    "CACTO\0"
+    "SAMAMBAIA\0"
+    "MONTANHA\0"
+    "VALE\0"
+    "CANYON\0"
+    "GELEIRA\0"
+    "ICEBERG\0"
+    "OCEANO\0"
+    "RIO\0"
+    "LAGO\0"
+    "LAGOA\0"
+    "PÂNTANO\0"
+    "DESERTO\0"
+    "SAVANA\0"
+    "TUNDRA\0"
+    "FLORESTA\0"
+    "SELVA\0"
+    "CORAL\0"
+    "RECIFE\0"
+    "GRUTA\0"
+    "CAVERNA\0"
+    "CRATERA\0"
+    "DIAMANTE\0"
+    "OURO\0"
+    "CRISTAL\0"
+    "ÂMBAR\0"
+    "PEDRA\0"
+    "AREIA\0"
+    "ARGILA\0"
+    "GRANITO\0"
+    "MÁRMORE\0"
+    "QUARTZO\0"
+    "ORVALHO\0"
+    "NEBLINA\0"
+    "GRANIZO\0"
+    "NEVE\0"
+    "GEADA\0"
+;
+static const uint16_t OFFSETS_NATUREZA[] = { 0, 10, 18, 29, 43, 53, 62, 70, 78, 83, 94, 98, 102, 110, 117, 125, 133, 138, 147, 153, 163, 172, 177, 184, 192, 200, 207, 211, 216, 222, 231, 239, 246, 253, 262, 268, 274, 281, 287, 295, 303, 312, 317, 325, 332, 338, 344, 351, 359, 368, 376, 384, 392, 400, 405 };
 
-/* -----------------------------------------------------------------------
- * Categoria 20: CASA
- * ----------------------------------------------------------------------- */
-static const char *const WORDS_CASA[] = {
-    "SOF" "\xC3\x81", "GELADEIRA", "CHUVEIRO", "TRAVESSEIRO", "COBERTOR",
-    "CAMA", "MESA", "CADEIRA", "ABAJUR", "CORTINA",
-    "TAPETE", "QUADRO", "VASO", "ESTANTE", "GUARDA-ROUPA",
-    "ESPELHO", "VENTILADOR", "AR-CONDICIONADO", "AQUECEDOR", "UMIDIFICADOR",
-    "FOG" "\xC3\x83" "O", "MICRO-ONDAS", "TORRADEIRA", "CAFETEIRA", "LIQUIDIFICADOR",
-    "BATEDEIRA", "MIXER", "ASPIRADOR", "FERRO DE PASSAR", "M" "\xC3\x81" "QUINA DE LAVAR",
-    "SECADORA", "VARAL", "LIXEIRA", "RODO", "PANO DE CH" "\xC3\x83" "O",
-    "TOALHA", "SABONETE", "SHAMPOO", "ESCOVA DE DENTE", "PASTA DE DENTE",
-    "PAPEL HIGI" "\xC3\x8A" "NICO", "DESCARGA", "PIA", "TORNEIRA", "BANHEIRA",
-    "CHURRASQUEIRA", "REDE", "BANQUETA", "CRIADO-MUDO", "POLTRONA",
-    "LUSTRE", "INTERRUPTOR", "TOMADA", "FECHADURA", "CAMPAINHA",
-};
-
-/* -----------------------------------------------------------------------
- * Tabela global de categorias
- * ----------------------------------------------------------------------- */
+/* --- CASA (55 palavras) --- */
+static const char BLOB_CASA[] =
+    "SOFÁ\0"
+    "GELADEIRA\0"
+    "CHUVEIRO\0"
+    "TRAVESSEIRO\0"
+    "COBERTOR\0"
+    "CAMA\0"
+    "MESA\0"
+    "CADEIRA\0"
+    "ABAJUR\0"
+    "CORTINA\0"
+    "TAPETE\0"
+    "QUADRO\0"
+    "VASO\0"
+    "ESTANTE\0"
+    "GUARDA-ROUPA\0"
+    "ESPELHO\0"
+    "VENTILADOR\0"
+    "AR-CONDICIONADO\0"
+    "AQUECEDOR\0"
+    "UMIDIFICADOR\0"
+    "FOGÃO\0"
+    "MICRO-ONDAS\0"
+    "TORRADEIRA\0"
+    "CAFETEIRA\0"
+    "LIQUIDIFICADOR\0"
+    "BATEDEIRA\0"
+    "MIXER\0"
+    "ASPIRADOR\0"
+    "FERRO DE PASSAR\0"
+    "MÁQUINA DE LAVAR\0"
+    "SECADORA\0"
+    "VARAL\0"
+    "LIXEIRA\0"
+    "RODO\0"
+    "PANO DE CHÃO\0"
+    "TOALHA\0"
+    "SABONETE\0"
+    "SHAMPOO\0"
+    "ESCOVA DE DENTE\0"
+    "PASTA DE DENTE\0"
+    "PAPEL HIGIÊNICO\0"
+    "DESCARGA\0"
+    "PIA\0"
+    "TORNEIRA\0"
+    "BANHEIRA\0"
+    "CHURRASQUEIRA\0"
+    "REDE\0"
+    "BANQUETA\0"
+    "CRIADO-MUDO\0"
+    "POLTRONA\0"
+    "LUSTRE\0"
+    "INTERRUPTOR\0"
+    "TOMADA\0"
+    "FECHADURA\0"
+    "CAMPAINHA\0"
+;
+static const uint16_t OFFSETS_CASA[] = { 0, 6, 16, 25, 37, 46, 51, 56, 64, 71, 79, 86, 93, 98, 106, 119, 127, 138, 154, 164, 177, 184, 196, 207, 217, 232, 242, 248, 258, 274, 292, 301, 307, 315, 320, 334, 341, 350, 358, 374, 389, 406, 415, 419, 428, 437, 451, 456, 465, 477, 486, 493, 505, 512, 522 };
 
 const fora_category_t FORA_CATEGORIES[FORA_CATEGORY_COUNT] = {
-    { "COMIDAS",                              WORDS_COMIDAS,      COUNTOF(WORDS_COMIDAS)      },
-    { "BEBIDAS",                              WORDS_BEBIDAS,      COUNTOF(WORDS_BEBIDAS)      },
-    { "ANIMAIS",                              WORDS_ANIMAIS,      COUNTOF(WORDS_ANIMAIS)      },
-    { "PA" "\xC3\x8D" "SES",                  WORDS_PAISES,       COUNTOF(WORDS_PAISES)       },
-    { "CIDADES",                              WORDS_CIDADES,      COUNTOF(WORDS_CIDADES)      },
-    { "LUGARES",                              WORDS_LUGARES,      COUNTOF(WORDS_LUGARES)      },
-    { "OBJETOS",                              WORDS_OBJETOS,      COUNTOF(WORDS_OBJETOS)      },
-    { "PROFISS" "\xC3\x95" "ES",              WORDS_PROFISSOES,   COUNTOF(WORDS_PROFISSOES)   },
-    { "ESPORTES",                             WORDS_ESPORTES,     COUNTOF(WORDS_ESPORTES)     },
-    { "CORPO",                                WORDS_CORPO,        COUNTOF(WORDS_CORPO)        },
-    { "HER" "\xC3\x93" "IS",                  WORDS_HEROIS,       COUNTOF(WORDS_HEROIS)       },
-    { "FILMES",                               WORDS_FILMES,       COUNTOF(WORDS_FILMES)       },
-    { "S" "\xC3\x89" "RIES",                  WORDS_SERIES,       COUNTOF(WORDS_SERIES)       },
-    { "JOGOS",                                WORDS_JOGOS,        COUNTOF(WORDS_JOGOS)        },
-    { "PERSONAGENS",                          WORDS_PERSONAGENS,  COUNTOF(WORDS_PERSONAGENS)  },
-    { "MARCAS",                               WORDS_MARCAS,       COUNTOF(WORDS_MARCAS)       },
-    { "VE" "\xC3\x8D" "CULOS",               WORDS_VEICULOS,     COUNTOF(WORDS_VEICULOS)     },
-    { "TECNOLOGIA",                           WORDS_TECNOLOGIA,   COUNTOF(WORDS_TECNOLOGIA)   },
-    { "NATUREZA",                             WORDS_NATUREZA,     COUNTOF(WORDS_NATUREZA)     },
-    { "CASA",                                 WORDS_CASA,         COUNTOF(WORDS_CASA)         },
+    { "COMIDAS", BLOB_COMIDAS, OFFSETS_COMIDAS, COUNTOF(OFFSETS_COMIDAS) },
+    { "BEBIDAS", BLOB_BEBIDAS, OFFSETS_BEBIDAS, COUNTOF(OFFSETS_BEBIDAS) },
+    { "ANIMAIS", BLOB_ANIMAIS, OFFSETS_ANIMAIS, COUNTOF(OFFSETS_ANIMAIS) },
+    { "PAÍSES", BLOB_PAISES, OFFSETS_PAISES, COUNTOF(OFFSETS_PAISES) },
+    { "CIDADES", BLOB_CIDADES, OFFSETS_CIDADES, COUNTOF(OFFSETS_CIDADES) },
+    { "LUGARES", BLOB_LUGARES, OFFSETS_LUGARES, COUNTOF(OFFSETS_LUGARES) },
+    { "OBJETOS", BLOB_OBJETOS, OFFSETS_OBJETOS, COUNTOF(OFFSETS_OBJETOS) },
+    { "PROFISSÕES", BLOB_PROFISSOES, OFFSETS_PROFISSOES, COUNTOF(OFFSETS_PROFISSOES) },
+    { "ESPORTES", BLOB_ESPORTES, OFFSETS_ESPORTES, COUNTOF(OFFSETS_ESPORTES) },
+    { "CORPO", BLOB_CORPO, OFFSETS_CORPO, COUNTOF(OFFSETS_CORPO) },
+    { "HERÓIS", BLOB_HEROIS, OFFSETS_HEROIS, COUNTOF(OFFSETS_HEROIS) },
+    { "FILMES", BLOB_FILMES, OFFSETS_FILMES, COUNTOF(OFFSETS_FILMES) },
+    { "SÉRIES", BLOB_SERIES, OFFSETS_SERIES, COUNTOF(OFFSETS_SERIES) },
+    { "JOGOS", BLOB_JOGOS, OFFSETS_JOGOS, COUNTOF(OFFSETS_JOGOS) },
+    { "PERSONAGENS", BLOB_PERSONAGENS, OFFSETS_PERSONAGENS, COUNTOF(OFFSETS_PERSONAGENS) },
+    { "MARCAS", BLOB_MARCAS, OFFSETS_MARCAS, COUNTOF(OFFSETS_MARCAS) },
+    { "VEÍCULOS", BLOB_VEICULOS, OFFSETS_VEICULOS, COUNTOF(OFFSETS_VEICULOS) },
+    { "TECNOLOGIA", BLOB_TECNOLOGIA, OFFSETS_TECNOLOGIA, COUNTOF(OFFSETS_TECNOLOGIA) },
+    { "NATUREZA", BLOB_NATUREZA, OFFSETS_NATUREZA, COUNTOF(OFFSETS_NATUREZA) },
+    { "CASA", BLOB_CASA, OFFSETS_CASA, COUNTOF(OFFSETS_CASA) },
 };
+
+const char *fora_words_get(int cat_index, int word_index)
+{
+    if (cat_index < 0 || cat_index >= FORA_CATEGORY_COUNT) return "";
+    const fora_category_t *cat = &FORA_CATEGORIES[cat_index];
+    if (word_index < 0 || word_index >= cat->count) return "";
+    return cat->words_blob + cat->offsets[word_index];
+}

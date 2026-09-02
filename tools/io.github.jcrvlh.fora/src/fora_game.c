@@ -220,7 +220,7 @@ bool fora_game_check_guess(fora_state_t *s, int chosen)
 const char *fora_game_get_word(const fora_state_t *s)
 {
     if (s->word_category < 0 || s->word_index < 0) return "???";
-    return FORA_CATEGORIES[s->word_category].words[s->word_index];
+    return fora_words_get(s->word_category, s->word_index);
 }
 
 const char *fora_game_get_category_name(const fora_state_t *s)
@@ -232,7 +232,7 @@ const char *fora_game_get_category_name(const fora_state_t *s)
 const char *fora_game_get_guess_word(const fora_state_t *s, int option)
 {
     if (option < 0 || option >= FORA_GUESS_OPTIONS) return "???";
-    return FORA_CATEGORIES[s->word_category].words[s->guess_words[option]];
+    return fora_words_get(s->word_category, s->guess_words[option]);
 }
 
 bool fora_game_has_name(const fora_state_t *s, int player)

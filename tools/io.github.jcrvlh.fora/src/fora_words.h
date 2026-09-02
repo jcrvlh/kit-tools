@@ -8,13 +8,16 @@
 
 #pragma once
 
+#include <stdint.h>
+
 /* -----------------------------------------------------------------------
  * Estrutura de Categoria
  * ----------------------------------------------------------------------- */
 
 typedef struct {
     const char *name;            /**< Nome da categoria em CAIXA ALTA. */
-    const char *const *words;    /**< Array de palavras (CAIXA ALTA, UTF-8). */
+    const char *words_blob;      /**< Bloco contínuo de palavras separadas por \0. */
+    const uint16_t *offsets;     /**< Offsets de cada palavra em words_blob. */
     int count;                   /**< Número de palavras no array. */
 } fora_category_t;
 
@@ -30,3 +33,6 @@ extern const fora_category_t FORA_CATEGORIES[FORA_CATEGORY_COUNT];
 
 /** Índice especial para o modo MIX (sorteia categoria aleatória). */
 #define FORA_MIX_INDEX       (-1)
+
+/** Obtém a palavra de uma categoria por índice. */
+const char *fora_words_get(int cat_index, int word_index);
