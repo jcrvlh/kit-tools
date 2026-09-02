@@ -51,16 +51,16 @@ static int tests_failed = 0;
 
 static void test_word_counts(void)
 {
-    TEST("Todas as categorias têm ≥50 palavras");
+    TEST("Todas as categorias têm exatamente 40 palavras");
     printf("  Categorias: %d\n", FORA_CATEGORY_COUNT);
-    ASSERT(FORA_CATEGORY_COUNT == 20, "Deve haver 20 categorias");
+    ASSERT(FORA_CATEGORY_COUNT == 10, "Deve haver 10 categorias");
 
     for (int i = 0; i < FORA_CATEGORY_COUNT; i++) {
         const fora_category_t *cat = &FORA_CATEGORIES[i];
         printf("  [%2d] %-14s : %d palavras %s\n",
                i, cat->name, cat->count,
-               cat->count >= 50 ? "OK" : "FAIL");
-        ASSERT(cat->count >= 50, cat->name);
+               cat->count == 40 ? "OK" : "FAIL");
+        ASSERT(cat->count == 40, cat->name);
     }
 }
 

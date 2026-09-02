@@ -265,19 +265,26 @@ static void load_config(void)
     if (s_api->storage->get_i32("fora_rounds", &v) == KIT_OK && (v == 1 || v == 2))
         s_game.num_rounds = v;
     char p[64];
-    if (s_api->storage->get_str("fora_names", p, sizeof p) != KIT_OK) return;
+    memset(p, 0, sizeof p);
+    if (s_api->storage->get_str("fora_names", p, sizeof p - 1) != KIT_OK) return;
+    p[sizeof(p) - 1] = 0;
     int pl = 0;
     const char *start = p;
-    for (const char *c = p; pl < FORA_MAX_PLAYERS; c++) {
-        if (*c == '/' || *c == 0) {
+    for (const char *c = p; pl < FORA_MAX_PLAYERS && *c; c++) {
+        if (*c == '/') {
             int n = (int)(c - start);
             if (n > FORA_NAME_LEN - 1) n = FORA_NAME_LEN - 1;
-            memcpy(s_game.player_names[pl], start, n);
+            if (n > 0) memcpy(s_game.player_names[pl], start, n);
             s_game.player_names[pl][n] = 0;
             pl++;
             start = c + 1;
-            if (*c == 0) break;
         }
+    }
+    if (pl < FORA_MAX_PLAYERS && *start) {
+        int n = (int)strlen(start);
+        if (n > FORA_NAME_LEN - 1) n = FORA_NAME_LEN - 1;
+        if (n > 0) memcpy(s_game.player_names[pl], start, n);
+        s_game.player_names[pl][n] = 0;
     }
 }
 
@@ -1029,8 +1036,9 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
     build_titlebar();
     build_tileview();
 
-    lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_OFF);
     lv_obj_update_layout(s_screen);
+    lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_OFF);
+    sync_dots();
 
     sync_ajustes();
     render_phase();

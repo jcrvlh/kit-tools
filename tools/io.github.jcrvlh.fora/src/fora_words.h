@@ -25,8 +25,8 @@ typedef struct {
  * Dados (definidos em fora_words.c)
  * ----------------------------------------------------------------------- */
 
-/** Número total de categorias. */
-#define FORA_CATEGORY_COUNT  20
+/** Número total de categorias (10 categorias essenciais). */
+#define FORA_CATEGORY_COUNT  10
 
 /** Tabela de categorias. */
 extern const fora_category_t FORA_CATEGORIES[FORA_CATEGORY_COUNT];
