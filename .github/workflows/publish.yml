@@ -55,14 +55,17 @@ jobs:
         with:
           esp_idf_version: v5.3
           target: esp32s3
+          # A esp-idf-ci-action embrulha o command entre aspas simples — nada de
+          # aspas simples, parênteses ou $ soltos aqui dentro.
           command: |
-            export KIT_SDK_PATH="$GITHUB_WORKSPACE/kit/tools-sdk"
-            export KIT_LVGL_DIR="$GITHUB_WORKSPACE/lvgl"
+            export KIT_SDK_PATH=$GITHUB_WORKSPACE/kit/tools-sdk
+            export KIT_LVGL_DIR=$GITHUB_WORKSPACE/lvgl
             cd kit-tools/tools/${{ inputs.tool_id }}
             kit-cli build . --target xtensa
-            xtensa-esp32s3-elf-nm -D tool.so | grep -E ' T (tool_init|tool_destroy)$'
-            kit-cli pack . -o "${{ inputs.tool_id }}.kit"
-            kit-cli info "${{ inputs.tool_id }}.kit"
+            xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_init
+            xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_destroy
+            kit-cli pack . -o ${{ inputs.tool_id }}.kit
+            kit-cli info ${{ inputs.tool_id }}.kit
 
       - name: Ler versão do manifest
         id: ver
