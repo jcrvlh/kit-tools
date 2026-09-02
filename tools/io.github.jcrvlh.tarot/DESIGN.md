@@ -48,6 +48,10 @@ mesmos padrões da Tool `Fora`:
 - Botões pill no rodapé, alvos de toque ≥ 80 px, `lv_obj_set_ext_click_area`.
 - Sem caixas decorativas em volta de texto em telas pequenas (regra de design do
   KIT): o texto respira direto no preto.
+- As fontes do KIT trazem Latin-1 + `U+2022`, mas **não** o travessão (`—`) nem a
+  seta (`→`) — sem tratamento eles viram um retângulo vazado. `tr()` em `main.c`
+  troca `—`/`–` por hífen e `→` pelo chevron FontAwesome na hora de renderizar
+  (o texto original do baralho, cheio de `—`, fica intacto no fonte).
 
 ### Naipe → forma/cor (marcação leve, opcional na V1)
 
@@ -100,20 +104,21 @@ Todas as telas: 368 × 448, `F_PAD 16`, conteúdo útil 336 px. Telas de resulta
 ```
 ┌──────────────────────────────┐
 │                              │
-│      CONCENTRE-SE            │  kit_mono_20, muted
-│      NA SUA PERGUNTA         │  kit_display_44 / mono_26
+│  CONCENTRE-SE NA SUA         │  kit_sans_28, TEXT — o foco da tela
+│  PERGUNTA                    │
 │                              │
-│         ▲   ●   ■            │  primitivas, discretas
+│   chacoalhe o KIT            │  kit_sans_22, muted
+│   ou toque na tela           │
 │                              │
-│   chacoalhe o KIT            │  kit_mono_16, muted
-│   ou toque para tirar        │
-│                              │
-│      [    TIRAR CARTA    ]   │  pill azul
+│      [    TIRAR CARTA    ]   │  pill azul (só nesta tela)
 └──────────────────────────────┘
 ```
 
+- Sem as primitivas ▲ ● ■: aquilo é a logo do KIT, não do Tarot.
 - **Shake** (`imu.register_shake_callback`) → dispara a tiragem.
-- **Tap** no botão → dispara a tiragem.
+- **Tap** na tela ou no botão → dispara a tiragem.
+- Ajustes fica no tile à **esquerda**; a tela abre na PRINCIPAL. O botão-pílula
+  some quando se desliza para os Ajustes.
 - Para três cartas, o botão diz `TIRAR AS TRÊS`.
 
 ### 4.3 Embaralhar (animação, ~1,0–1,4 s)
@@ -123,8 +128,13 @@ aleatoriamente, desacelerando, com `KIT_SFX_*`/beeps curtos e discretos. Ao
 travar, transiciona para o resultado. Para três cartas: um embaralho só, depois
 revelação sequencial.
 
-Som: ticks curtos durante o embaralho; `KIT_SFX_REVEAL` (ou beep 2200 Hz) ao
-assentar cada carta.
+Som: escala **Frígia dominante de Mi** ("Hijaz" — `E F G# A B C D E`, o modo de
+sonoridade oculta/esotérica, com o salto de 2ª aumentada `F→G#`). No embaralho
+ela **desce** devagar (E5 → G#4), uma nota a cada ~3 ticks, as últimas segurando
+mais — uma ladainha ritual que trava no G#4 suspenso. A revelação resolve com um
+floreio Hijaz que sobe e abre (carta normal) ou desce e fecha (invertida),
+última nota longa. Tudo ≥ 300 Hz, 70–300 ms — sem o "estouro" de bipes graves e
+curtos. Deslizar entre tiles/telas é **mudo** de propósito.
 
 ### 4.4 Resultado — uma carta (rolável)
 
@@ -192,16 +202,19 @@ Tela final **Resultado** (rolável, resumo compacto):
 ┌──────────────────────────────┐
 │  AJUSTES                     │
 │                              │
-│  CARTAS INVERTIDAS           │  mono_16, muted
-│  [ ATIVADO ] [ DESATIVADO ]  │  dois chips, seleção em accent
+│  TIRAGEM                     │  mono_16, muted
+│  [ UMA CARTA ] [ TRÊS ... ]  │  dois chips, seleção em accent
 │                              │
 │  BARALHO                     │
-│  [ KIT Tarot          ✓ ]    │  lista; 1 item na V1
+│  [ SÓ MAIORES ] [ 78 CARTAS ]│  22 Arcanos Maiores × baralho completo
+│                              │
+│  CARTAS INVERTIDAS           │
+│  [ SIM ] [ NÃO ]             │
 │                              │
 │  ─────────────────────────   │
 │  Tarot é entretenimento e    │  "Sobre": só estas linhas muted no
 │  reflexão — não previsão.    │  rodapé de Ajustes, sem tela própria
-│  v1.0.0                      │
+│  v1.1.0                      │
 │                              │
 │  [        VOLTAR         ]   │
 └──────────────────────────────┘
