@@ -43,7 +43,8 @@
 #define T_CONTENT    (T_W - 2 * T_PAD)               /* 336 */
 #define T_TITLEBAR   88
 #define T_FOOT       104
-#define T_PAGE_H     (T_H - T_TITLEBAR - T_FOOT)     /* 256 */
+#define T_PAGE_H     (T_H - T_TITLEBAR - T_FOOT)     /* 256 — telas com rodapé fixo */
+#define T_PAGE_H_FULL (T_H - T_TITLEBAR)             /* 360 — menu (rodapé só na PRINCIPAL) */
 #define T_CHIP       56
 #define T_BTN_H      76
 #define T_BTN_MARGIN 18
@@ -369,10 +370,10 @@ static void tv_changed_cb(lv_event_t *e)
     menu_sync_footer();
 }
 
-static void build_tileview(lv_obj_t *scr, int n_tiles)
+static void build_tileview(lv_obj_t *scr, int n_tiles, int page_h)
 {
     lv_obj_t *tv = lv_tileview_create(scr);
-    lv_obj_set_size(tv, T_W, T_PAGE_H);
+    lv_obj_set_size(tv, T_W, page_h);
     lv_obj_set_pos(tv, 0, T_TITLEBAR);
     lv_obj_set_style_bg_opa(tv, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(tv, 0, 0);
@@ -536,7 +537,7 @@ static void build_menu_tile_focus(lv_obj_t *tile)
 
 static void build_menu_tile_settings(lv_obj_t *tile)
 {
-    lv_obj_t *col = scroll_col(tile, 22, 20);
+    lv_obj_t *col = scroll_col(tile, 22, 28);
 
     add_label(col, "AJUSTES", KIT_COLOR_TEXT, &kit_mono_26, 3);
 
@@ -554,12 +555,6 @@ static void build_menu_tile_settings(lv_obj_t *tile)
 
     hairline(col);
 
-    add_wrap(col, s_major_only
-                 ? "Baralho KIT Tarot \xE2\x80\x94 22 Arcanos Maiores, texto original."
-                 : "Baralho KIT Tarot \xE2\x80\x94 78 cartas, texto original.",
-             KIT_COLOR_TEXT_MUTED, &kit_sans_22, LV_TEXT_ALIGN_CENTER);
-    add_wrap(col, "Tarot \xC3\xA9 reflex\xC3\xA3o e entretenimento, n\xC3\xA3o previs\xC3\xA3o.",
-             KIT_COLOR_TEXT_MUTED, &kit_sans_22, LV_TEXT_ALIGN_CENTER);
     add_label(col, "v1.1.0", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
 }
 
@@ -580,8 +575,10 @@ static void build_menu_at(int start_tile)
 
     build_titlebar(scr, "TAROT", 2);
 
-    /* Ordem: [0] AJUSTES à esquerda · [1] PRINCIPAL à direita. */
-    build_tileview(scr, 2);
+    /* Ordem: [0] AJUSTES à esquerda · [1] PRINCIPAL à direita. Altura cheia:
+     * o rodapé só aparece na PRINCIPAL e flutua sobre a base; os Ajustes usam
+     * a tela toda e rolam. */
+    build_tileview(scr, 2, T_PAGE_H_FULL);
     build_menu_tile_settings(s_tiles[0]);
     build_menu_tile_focus(s_tiles[1]);
 
@@ -740,7 +737,7 @@ static void build_result(void)
 
     build_titlebar(scr, triple ? "TIRAGEM" : "A CARTA", n);
 
-    build_tileview(scr, n);
+    build_tileview(scr, n, T_PAGE_H);   /* telas de resultado têm rodapé fixo */
     for (int i = 0; i < n; i++) {
         if (triple) result_triple_tile(s_tiles[i], i);
         else        result_single_tile(s_tiles[i], i);

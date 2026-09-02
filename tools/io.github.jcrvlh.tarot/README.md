@@ -15,6 +15,9 @@ Cada carta traz uma descrição do que ela é (para quem não conhece tarot), tr
 palavras-chave, o significado (normal/invertido) e, na tiragem de três, uma
 frase de enquadramento para a posição.
 
+Tarot aqui é **reflexão e entretenimento, não previsão.** Todo o texto é
+original, licença CC0.
+
 O design completo está em [DESIGN.md](DESIGN.md).
 
 ## Como testar (build nativo)

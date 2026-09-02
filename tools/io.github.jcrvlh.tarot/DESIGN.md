@@ -196,7 +196,7 @@ Tela final **Resultado** (rolável, resumo compacto):
 └──────────────────────────────┘
 ```
 
-### 4.6 Ajustes (rolável)
+### 4.6 Ajustes (tile à esquerda, rolável)
 
 ```
 ┌──────────────────────────────┐
@@ -212,16 +212,16 @@ Tela final **Resultado** (rolável, resumo compacto):
 │  [ SIM ] [ NÃO ]             │
 │                              │
 │  ─────────────────────────   │
-│  Tarot é entretenimento e    │  "Sobre": só estas linhas muted no
-│  reflexão — não previsão.    │  rodapé de Ajustes, sem tela própria
-│  v1.1.0                      │
-│                              │
-│  [        VOLTAR         ]   │
+│  v1.1.0                      │  só a versão; sem disclaimer
 └──────────────────────────────┘
 ```
 
-O "Sobre" **não** é uma tela nem um item de menu: são as três linhas mudas no
-fim da lista de Ajustes (disclaimer + versão).
+- É o tile **0** do menu (esquerda); a tela abre no tile 1 (PRINCIPAL). O
+  tileview do menu ocupa a **altura cheia** (`T_PAGE_H_FULL`, sem reservar o
+  rodapé) — o botão-pílula só existe na PRINCIPAL e flutua sobre a base, então
+  os Ajustes usam a tela toda e rolam se precisar. As telas de resultado, que
+  têm rodapé fixo, seguem com `T_PAGE_H`.
+- Sem "Sobre"/disclaimer: só a linha de versão fecha a lista.
 
 ## 5. Lógica de tiragem
 
@@ -407,7 +407,9 @@ alfabeto visual do KIT. `scripts/make_icon.py` gera `icon.png` (catálogo) e
 2. **Chance de inversão:** 50 % (moeda justa por carta).
 3. **Três cartas:** leitura contextual — significado base + lente de posição
    (`as_past`/`as_present`/`as_future`) por carta.
-4. **"Sobre":** rodapé de Ajustes, sem tela própria.
+4. **"Sobre":** dispensado — os Ajustes fecham só com a linha de versão (o
+   disclaimer poluía uma tela pequena). O aviso de que tarot é reflexão, não
+   previsão, fica no README/catálogo.
 4b. **`about`:** toda carta traz uma descrição neutra do que ela é, para quem
    não conhece tarot (ver §6.1).
 5. **Lista das 78 cartas:** ver §13 — a aprovar.
