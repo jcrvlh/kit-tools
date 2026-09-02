@@ -50,22 +50,26 @@ jobs:
         working-directory: kit-tools
         run: python scripts/validate_tool.py "tools/${{ inputs.tool_id }}"
 
+      # O `kit-cli build --target xtensa` só precisa do compilador xtensa no PATH
+      # (não do ESP-IDF inteiro). Rodar no host — e não num container — deixa o
+      # kit-cli instalado pelo pip acessível.
+      - name: Instalar toolchain Xtensa (esp-13.2.0)
+        run: |
+          url=https://github.com/espressif/crosstool-NG/releases/download/esp-13.2.0_20240530/xtensa-esp-elf-13.2.0_20240530-x86_64-linux-gnu.tar.xz
+          curl -sSL "$url" | tar -xJ
+          echo "$PWD/xtensa-esp-elf/bin" >> "$GITHUB_PATH"
+
       - name: Compilar para ESP32-S3 e empacotar
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.3
-          target: esp32s3
-          # A esp-idf-ci-action embrulha o command entre aspas simples — nada de
-          # aspas simples, parênteses ou $ soltos aqui dentro.
-          command: |
-            export KIT_SDK_PATH=$GITHUB_WORKSPACE/kit/tools-sdk
-            export KIT_LVGL_DIR=$GITHUB_WORKSPACE/lvgl
-            cd kit-tools/tools/${{ inputs.tool_id }}
-            kit-cli build . --target xtensa
-            xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_init
-            xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_destroy
-            kit-cli pack . -o ${{ inputs.tool_id }}.kit
-            kit-cli info ${{ inputs.tool_id }}.kit
+        working-directory: kit-tools/tools/${{ inputs.tool_id }}
+        env:
+          KIT_SDK_PATH: ${{ github.workspace }}/kit/tools-sdk
+          KIT_LVGL_DIR: ${{ github.workspace }}/lvgl
+        run: |
+          kit-cli build . --target xtensa
+          xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_init
+          xtensa-esp32s3-elf-nm -D tool.so | grep -w tool_destroy
+          kit-cli pack . -o "${{ inputs.tool_id }}.kit"
+          kit-cli info "${{ inputs.tool_id }}.kit"
 
       - name: Ler versão do manifest
         id: ver
