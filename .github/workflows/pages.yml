@@ -36,10 +36,21 @@ jobs:
           python-version: '3.12'
 
       - name: Baixar pacotes .kit publicados (se houver)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p dist
-          # TODO(ADR-0012): baixar os .kit das Releases para preencher sha256/size.
-          # gh release download ... -D dist/  (quando a pipeline de publish existir)
+          # Para cada Tool, tenta baixar o .kit da Release <id>-v<version>.
+          # Sem Release ainda, segue sem sha256/size (build_catalog.py deixa null).
+          for m in tools/*/manifest.json; do
+            id=$(python -c "import json;print(json.load(open('$m'))['id'])")
+            ver=$(python -c "import json;print(json.load(open('$m'))['version'])")
+            echo "-> $id v$ver"
+            gh release download "$id-v$ver" --repo "$GITHUB_REPOSITORY" \
+              --pattern '*.kit' --dir dist --clobber \
+              || echo "   (sem Release para $id-v$ver)"
+          done
+          ls -l dist || true
 
       - name: Gerar catálogo
         run: python scripts/build_catalog.py --dist dist --out _site/index.json

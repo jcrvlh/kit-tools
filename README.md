@@ -39,7 +39,7 @@ kit-tools/
 1. Desenvolva com o [KIT Tools SDK](https://github.com/jcrvlh/kit/tree/main/tools-sdk)
    (`kit-cli new`, build nativo com stubs, simulador de desktop).
 2. Crie `tools/<seu-id>/` seguindo o exemplo
-   [`tools/io.github.jcrvlh.hello`](tools/io.github.jcrvlh.hello).
+   [`tools/io.github.jcrvlh.tarot`](tools/io.github.jcrvlh.tarot).
 3. Abra um Pull Request. A CI roda `scripts/validate_tool.py` e compila a Tool.
 4. Um mantenedor revisa; ao mesclar, a CI empacota, assina e publica.
 

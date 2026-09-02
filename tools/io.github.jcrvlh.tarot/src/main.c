@@ -14,7 +14,7 @@
  * Tirar carta: chacoalhar, tocar na tela principal ou o botão TIRAR (que só
  * aparece na PRINCIPAL). Ajustes: tiragem (1/3), baralho (22 maiores ou 78) e
  * cartas invertidas.
- * Textos grandes (kit_sans_22 no corpo), rolagem vertical quando precisa.
+ * Textos grandes (kit_sans_28 no corpo da leitura), rolagem vertical quando precisa.
  * Áudio: escala Frígia dominante de Mi ("Hijaz", modo de sonoridade oculta) —
  * desce devagar no embaralho, floreio na revelação; deslizar entre tiles é
  * mudo. O travessão (—) é trocado por hífen
@@ -77,7 +77,10 @@ static lv_obj_t   *s_tiles[5]  = { 0 };
 static lv_obj_t   *s_dots[5]   = { 0 };
 static int         s_dot_n     = 0;
 static lv_obj_t   *s_footer    = NULL;    /* botão-pílula do menu (some nos Ajustes) */
-static lv_obj_t   *s_shuf_lbl  = NULL;
+static lv_obj_t   *s_shuf_lbl  = NULL;    /* nome que gira no embaralho */
+static lv_obj_t   *s_shuf_card = NULL;    /* quadro "roleta" que pisca no embaralho */
+static lv_obj_t   *s_shuf_dots[16] = { 0 };  /* marcas que enchem conforme desacelera */
+static int         s_shuf_dot_n = 0;
 static lv_timer_t *s_anim      = NULL;
 static int         s_anim_tick = 0;
 
@@ -282,6 +285,9 @@ static lv_obj_t *new_screen(void)
     s_dot_n = 0;
     s_footer = NULL;
     s_shuf_lbl = NULL;
+    s_shuf_card = NULL;
+    s_shuf_dot_n = 0;
+    for (int i = 0; i < 16; i++) s_shuf_dots[i] = NULL;
     for (int i = 0; i < 5; i++) { s_tiles[i] = NULL; s_dots[i] = NULL; }
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, lv_color_hex(KIT_COLOR_BG), 0);
@@ -387,7 +393,7 @@ static void build_tileview(lv_obj_t *scr, int n_tiles, int page_h)
 /* dica "deslize →" — último item da coluna. */
 static void swipe_hint(lv_obj_t *col, const char *txt)
 {
-    lv_obj_t *h = add_label(col, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    lv_obj_t *h = add_label(col, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
     lv_obj_set_style_pad_top(h, 6, 0);
 }
 
@@ -424,7 +430,7 @@ static void card_head(lv_obj_t *col, const tarot_pick_t *pick)
     add_wrap(col, c->arcana, KIT_COLOR_TEXT_MUTED, &kit_sans_22, LV_TEXT_ALIGN_CENTER);
     if (pick->reversed)
         add_label(col, "INVERTIDA", T_ACCENT, &kit_mono_20, 3);
-    add_wrap(col, c->keywords, T_ACCENT, &kit_sans_22, LV_TEXT_ALIGN_CENTER);
+    add_wrap(col, c->keywords, T_ACCENT, &kit_sans_28, LV_TEXT_ALIGN_CENTER);
 }
 
 /* --------------------------------------------------------------------------
@@ -525,7 +531,9 @@ static void build_menu_tile_focus(lv_obj_t *tile)
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(col, 20, 0);
-    lv_obj_center(col);
+    /* Centraliza no espaço ACIMA do botão-pílula (que flutua sobre a base):
+     * sem o deslocamento a frase encosta no botão. */
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, -T_FOOT / 2);
 
     /* A página principal é só a frase — sem as primitivas do KIT (isso é a
      * logo do sistema, não do Tarot). */
@@ -620,6 +628,18 @@ static void shuffle_tick_cb(lv_timer_t *t)
         int r = rng_range(0, lim - 1);
         if (s_shuf_lbl) lv_label_set_text(s_shuf_lbl, tr(tarot_deck[r].name));
         sfx_shuffle_note(s_anim_tick);
+
+        /* "Roleta": a moldura acende/apaga a cada nome que passa (riffle) e a
+         * fileira de marcas enche da esquerda p/ a direita conforme assenta.
+         * Só bg_color — o loader do KIT não expõe border_color. */
+        bool flash = (s_anim_tick & 1);
+        if (s_shuf_card)
+            lv_obj_set_style_bg_color(s_shuf_card,
+                lv_color_hex(flash ? KIT_COLOR_LINE : T_ACCENT), 0);
+        int filled = s_shuf_dot_n * s_anim_tick / (T_SHUFFLE_TICKS - 1);
+        for (int i = 0; i < s_shuf_dot_n; i++)
+            lv_obj_set_style_bg_color(s_shuf_dots[i],
+                lv_color_hex(i < filled ? T_ACCENT : KIT_COLOR_LINE), 0);
         uint32_t p = T_SHUFFLE_MS_MIN + (uint32_t)(T_SHUFFLE_MS_MAX - T_SHUFFLE_MS_MIN)
                      * s_anim_tick / (T_SHUFFLE_TICKS - 1);
         lv_timer_set_period(s_anim, p);
@@ -638,12 +658,58 @@ static void build_shuffle(void)
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(col, 18, 0);
+    lv_obj_set_style_pad_row(col, 22, 0);
     lv_obj_center(col);
 
     add_label(col, "EMBARALHANDO", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 4);
-    s_shuf_lbl = add_wrap(col, "\xC2\xB7 \xC2\xB7 \xC2\xB7", KIT_COLOR_TEXT,
-                          &kit_sans_28, LV_TEXT_ALIGN_CENTER);
+
+    /* Quadro "roleta": moldura (caixa preenchida) que acende/apaga no ritmo do
+     * embaralho — o padrão do KIT p/ linhas é caixa preenchida, não border. */
+    lv_obj_t *frame = lv_obj_create(col);
+    lv_obj_remove_style_all(frame);
+    lv_obj_set_size(frame, 236, 168);
+    lv_obj_set_style_radius(frame, 18, 0);
+    lv_obj_set_style_bg_color(frame, lv_color_hex(T_ACCENT), 0);
+    lv_obj_set_style_bg_opa(frame, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(frame, 3, 0);
+    lv_obj_remove_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
+    s_shuf_card = frame;
+
+    lv_obj_t *card = lv_obj_create(frame);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_size(card, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(KIT_COLOR_SURFACE), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    s_shuf_lbl = add_label(card, "\xC2\xB7 \xC2\xB7 \xC2\xB7", KIT_COLOR_TEXT,
+                           &kit_sans_28, 0);
+    lv_label_set_long_mode(s_shuf_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_shuf_lbl, lv_pct(100));
+    lv_obj_set_style_text_align(s_shuf_lbl, LV_TEXT_ALIGN_CENTER, 0);
+
+    /* Fileira de marcas — enche conforme o embaralho desacelera. */
+    lv_obj_t *dots = plain_box(col);
+    lv_obj_set_size(dots, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(dots, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(dots, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(dots, 6, 0);
+    s_shuf_dot_n = 12;
+    for (int i = 0; i < s_shuf_dot_n; i++) {
+        lv_obj_t *d = plain_box(dots);
+        lv_obj_set_size(d, 8, 8);
+        lv_obj_set_style_radius(d, 4, 0);
+        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(d, lv_color_hex(KIT_COLOR_LINE), 0);
+        s_shuf_dots[i] = d;
+    }
+
     add_wrap(col, "concentre-se na sua pergunta",
              KIT_COLOR_TEXT_MUTED, &kit_sans_22, LV_TEXT_ALIGN_CENTER);
 
@@ -679,12 +745,12 @@ static void result_single_tile(lv_obj_t *tile, int idx)
     lv_obj_t *col = scroll_col(tile, 22, 22);
     if (idx == 1) {
         add_label(col, "O QUE \xC3\x89", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 3);
-        add_wrap(col, c->about, KIT_COLOR_TEXT, &kit_sans_22, LV_TEXT_ALIGN_LEFT);
+        add_wrap(col, c->about, KIT_COLOR_TEXT, &kit_sans_28, LV_TEXT_ALIGN_LEFT);
     } else {
         add_label(col, p->reversed ? "NA LEITURA \xC2\xB7 INVERTIDA" : "NA LEITURA",
                   KIT_COLOR_TEXT_MUTED, &kit_mono_20, 3);
         add_wrap(col, p->reversed ? c->reversed : c->upright,
-                 KIT_COLOR_TEXT, &kit_sans_22, LV_TEXT_ALIGN_LEFT);
+                 KIT_COLOR_TEXT, &kit_sans_28, LV_TEXT_ALIGN_LEFT);
     }
 }
 
@@ -705,12 +771,12 @@ static void result_triple_tile(lv_obj_t *tile, int idx)
 
         card_head(col, p);
         hairline(col);
-        add_wrap(col, c->about, KIT_COLOR_TEXT_MUTED, &kit_sans_22, LV_TEXT_ALIGN_LEFT);
+        add_wrap(col, c->about, KIT_COLOR_TEXT_MUTED, &kit_sans_28, LV_TEXT_ALIGN_LEFT);
         hairline(col);
         add_wrap(col, p->reversed ? c->reversed : c->upright,
-                 KIT_COLOR_TEXT, &kit_sans_22, LV_TEXT_ALIGN_LEFT);
+                 KIT_COLOR_TEXT, &kit_sans_28, LV_TEXT_ALIGN_LEFT);
         hairline(col);
-        add_wrap(col, lens, T_ACCENT, &kit_sans_22, LV_TEXT_ALIGN_LEFT);
+        add_wrap(col, lens, T_ACCENT, &kit_sans_28, LV_TEXT_ALIGN_LEFT);
         swipe_hint(col, idx < 2 ? "deslize \xE2\x86\x92" : "resumo \xE2\x86\x92");
         return;
     }
@@ -719,7 +785,7 @@ static void result_triple_tile(lv_obj_t *tile, int idx)
     add_label(col, "RESUMO", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 3);
     for (int i = 0; i < 3; i++) {
         const tarot_card_t *c = &tarot_deck[s_picks[i].index];
-        add_label(col, POS_TITLE[i], KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+        add_label(col, POS_TITLE[i], KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
         char line[64];
         snprintf(line, sizeof line, "%s%s", c->name,
                  s_picks[i].reversed ? "  (inv.)" : "");
