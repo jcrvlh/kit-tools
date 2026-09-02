@@ -774,7 +774,10 @@ void tool_destroy(void)
     kill_anim();
     if (s_api && s_api->imu)
         s_api->imu->register_shake_callback(NULL, NULL);
-    s_screen = NULL;
+    /* Libera a própria tela: o runtime já trocou de volta pro Launcher, então
+     * ela não é mais a tela ativa. Deixá-la viva depois do dlclose faria os
+     * callbacks dela apontarem pra código desmapeado. */
+    if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
     s_tv = NULL;
     s_shuf_lbl = NULL;
     s_api = NULL;
