@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Tarot — linguagem "Brutalist Bauhaus" do KIT.
+    Uma carta preta com o totem das três primitivas (triângulo/círculo/quadrado):
+    uma "figura de arcano" montada com o alfabeto visual do KIT.
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <polygon points="120,46 87,100 153,100" fill="#E9B23C"/>
+  <circle cx="120" cy="132" r="26" fill="#2C3CC4"/>
+  <rect x="95" y="162" width="50" height="50" rx="7" fill="#C6472F"/>
+</svg>
