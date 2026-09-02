@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Fora — linguagem "Brutalist Bauhaus" do KIT.
+    Uma carta preta: quatro quadrados iguais (o grupo que compartilha a
+    palavra) e um círculo vermelho à parte — o FORA, forma e cor diferentes.
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="68"  y="52"  width="46" height="46" rx="6" fill="#E8E8E8"/>
+  <rect x="126" y="52"  width="46" height="46" rx="6" fill="#E8E8E8"/>
+  <rect x="68"  y="110" width="46" height="46" rx="6" fill="#E8E8E8"/>
+  <rect x="126" y="110" width="46" height="46" rx="6" fill="#E8E8E8"/>
+  <circle cx="120" cy="196" r="24" fill="#C6472F"/>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.fora",
+  "name": "Fora",
+  "version": "1.1.12",
+  "version_code": 14,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Jogo de dedução social — todos recebem uma palavra secreta, menos o FORA, que precisa disfarçar.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#C6472F",
+  "home_icon": "teams",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "input",
+    "storage",
+    "random",
+    "audio"
+  ],
+  "api_level": 1,
+  "assets": []
+}
