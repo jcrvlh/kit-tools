@@ -1,20 +1,26 @@
-name: Publicar pacote .kit (WIP)
+name: Publicar pacote .kit
 
-# Esboço da pipeline de publicação. Ainda NÃO está pronta para uso automático:
-#  - a compilação Xtensa de Tools avulsas via kit-cli precisa de ajuste fino;
-#  - a assinatura Ed25519 depende da implementação do ADR-0012 (kit-cli sign)
-#    e da chave de release do projeto (segredo KIT_RELEASE_PRIVATE_KEY).
-# Por isso roda só sob demanda (workflow_dispatch).
+# Compila a Tool para o ESP32-S3, empacota o .kit e publica em Releases.
+# Roda sob demanda; a versão do pacote vem do manifest (não do run number).
+#
+# Pendências conhecidas:
+#  - a carga da Tool no dispositivo ainda não foi validada em HW para Tools de
+#    UI completa (ver kit/tools-sdk/docs/tool_lvgl_runtime.md);
+#  - assinatura Ed25519 (ADR-0012 / kit-cli sign + segredo da chave de release)
+#    ainda não está ligada.
 
 on:
   workflow_dispatch:
     inputs:
       tool_id:
-        description: 'id da Tool em tools/ (ex: io.github.jcrvlh.hello)'
+        description: 'id da Tool em tools/ (ex: io.github.jcrvlh.tarot)'
         required: true
 
 permissions:
   contents: write   # criar Releases
+
+env:
+  LVGL_VERSION: v9.5.0   # bate com kit/firmware/dependencies.lock
 
 jobs:
   package:
@@ -28,21 +34,41 @@ jobs:
         uses: actions/checkout@v4
         with: { repository: jcrvlh/kit, path: kit }
 
+      - name: Checkout LVGL (headers para o build da Tool)
+        uses: actions/checkout@v4
+        with:
+          repository: lvgl/lvgl
+          ref: ${{ env.LVGL_VERSION }}
+          path: lvgl
+
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
 
-      - run: pip install ./kit/tools-sdk/cli
+      - run: pip install ./kit/tools-sdk/cli jsonschema
 
-      - name: Compilar para ESP32-S3
+      - name: Validar a Tool
+        working-directory: kit-tools
+        run: python scripts/validate_tool.py "tools/${{ inputs.tool_id }}"
+
+      - name: Compilar para ESP32-S3 e empacotar
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.3
           target: esp32s3
           command: |
             export KIT_SDK_PATH="$GITHUB_WORKSPACE/kit/tools-sdk"
+            export KIT_LVGL_DIR="$GITHUB_WORKSPACE/lvgl"
             cd kit-tools/tools/${{ inputs.tool_id }}
             kit-cli build . --target xtensa
+            xtensa-esp32s3-elf-nm -D tool.so | grep -E ' T (tool_init|tool_destroy)$'
             kit-cli pack . -o "${{ inputs.tool_id }}.kit"
+            kit-cli info "${{ inputs.tool_id }}.kit"
+
+      - name: Ler versão do manifest
+        id: ver
+        run: |
+          v=$(python -c "import json;print(json.load(open('kit-tools/tools/${{ inputs.tool_id }}/manifest.json'))['version'])")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       # - name: Assinar (ADR-0012)
       #   run: kit-cli sign kit-tools/tools/${{ inputs.tool_id }}/${{ inputs.tool_id }}.kit \
@@ -51,6 +77,6 @@ jobs:
       - name: Publicar Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tool_id }}-v${{ github.run_number }}
+          tag_name: ${{ inputs.tool_id }}-v${{ steps.ver.outputs.version }}
           files: kit-tools/tools/${{ inputs.tool_id }}/${{ inputs.tool_id }}.kit
           fail_on_unmatched_files: true
