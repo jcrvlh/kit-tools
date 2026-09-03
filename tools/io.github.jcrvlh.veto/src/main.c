@@ -438,7 +438,7 @@ static int rnd(int min, int max)
     const kit_api_table_t *t = api();
     if (max < min) max = min;
     if (t && t->random) return (int)t->random->range(min, max);
-    return min + rand() % (max - min + 1);
+    return min;
 }
 
 static uint64_t millis(void)
@@ -701,7 +701,7 @@ static void clock_cb(lv_timer_t *t)
     uint64_t now = millis();
 
     if (s_deadline == 0) {   // LIVRE — só o teto de segurança
-        if ((int)((now - s_started_at) / 1000) >= LIVRE_CAP_S) time_up(true);
+        if ((uint32_t)(now - s_started_at) >= (uint32_t)LIVRE_CAP_S * 1000u) time_up(true);
         return;
     }
 
@@ -710,7 +710,7 @@ static void clock_cb(lv_timer_t *t)
     uint32_t left_ms = (uint32_t)(s_deadline - now);
     int left = (int)((left_ms + 999) / 1000);
 
-    int w = (int)((int64_t)X_CONTENT * left_ms / s_total_ms);
+    int w = (s_total_ms > 0) ? (int)(((uint32_t)X_CONTENT * left_ms) / s_total_ms) : 0;
     lv_obj_set_width(s_bar_fill, w < 2 ? 2 : w);
 
     bool warn = left <= WARN_LEAD_S;
