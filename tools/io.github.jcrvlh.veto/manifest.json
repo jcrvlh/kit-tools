@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.veto",
+  "name": "Veto",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa: descreva a palavra-alvo para o time adivinhar sem falar nenhuma das palavras proibidas antes do tempo acabar!",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#E9B23C",
+  "home_icon": "veto",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "storage", "time", "audio", "power"],
+  "api_level": 1,
+  "assets": []
+}
