@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Veto — linguagem "Brutalist Bauhaus" do KIT.
+    Uma carta preta: a palavra-alvo (barra amarela no topo) e as palavras proibidas abaixo
+    (marcador quadrado vermelho + barra cinza).
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="40" y="52" width="160" height="42" rx="8" fill="#E9B23C"/>
+  <rect x="44" y="120" width="22" height="22" rx="4" fill="#C6472F"/>
+  <rect x="76" y="124" width="120" height="14" rx="4" fill="#EFEEEE"/>
+  <rect x="44" y="156" width="22" height="22" rx="4" fill="#C6472F"/>
+  <rect x="76" y="160" width="96" height="14" rx="4" fill="#EFEEEE"/>
+</svg>
