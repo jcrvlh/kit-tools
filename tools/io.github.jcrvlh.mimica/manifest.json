@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.mimica",
+  "name": "Mímica",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa: uma pessoa representa a palavra só com gestos, o time adivinha. O KIT sorteia e cronometra; a mesa confere.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#2C3CC4",
+  "home_icon": "mimica",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "storage", "audio"],
+  "api_level": 1,
+  "assets": []
+}
