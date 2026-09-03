@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.testa",
+  "name": "Testa",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.2.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa estilo \"Heads Up!\": segure o KIT na testa, a roda dá dicas e você adivinha. Incline pra baixo = acertou, pra cima = passou.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#E9B23C",
+  "home_icon": "testa",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "storage", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}
