@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.adedonha",
+  "name": "Adedonha",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa \"nome, lugar, objeto\": o KIT sorteia a cartela e as letras, conta o tempo e toca o alarme; a mesa confere no papel.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#2C3CC4",
+  "home_icon": "order",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "storage", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Adedonha — linguagem "Brutalist Bauhaus" do KIT.
+    Uma folha de cartela: a moldura escura e três "colunas" a preencher.
+    A primeira linha é azul (a letra da rodada); as outras, paper.
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="58" y="60"  width="124" height="20" rx="7" fill="#2C3CC4"/>
+  <rect x="58" y="110" width="124" height="20" rx="7" fill="#E8E8E8"/>
+  <rect x="58" y="160" width="124" height="20" rx="7" fill="#E8E8E8"/>
+</svg>
