@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Quebra-Gelo — linguagem "Brutalist Bauhaus" do KIT.
+    Uma carta escura com um balão de fala azul (#2C3CC4) e três pontos (reticências).
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="44" y="60" width="152" height="96" rx="28" fill="#2C3CC4"/>
+  <polygon points="68,154 68,186 98,154" fill="#2C3CC4"/>
+  <circle cx="88" cy="108" r="10" fill="#EFEADD"/>
+  <circle cx="120" cy="108" r="10" fill="#EFEADD"/>
+  <circle cx="152" cy="108" r="10" fill="#EFEADD"/>
+</svg>
