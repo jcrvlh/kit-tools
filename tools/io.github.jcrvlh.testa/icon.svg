@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Testa — linguagem "Brutalist Bauhaus" do KIT.
+    Uma cabeça (círculo) com o KIT encostado na testa e as setas de inclinar
+    (↑ passou / ↓ acertou) à direita, no amarelo do acento.
+    Fonte de verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <circle cx="94" cy="140" r="66" fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="112" y="44" width="70" height="128" rx="14"
+        fill="#0A0A0B" stroke="#E9B23C" stroke-width="6"/>
+  <rect x="150" y="92"  width="58" height="16" rx="8" fill="#E9B23C"/>
+  <rect x="150" y="140" width="58" height="16" rx="8" fill="#E9B23C"/>
+</svg>
