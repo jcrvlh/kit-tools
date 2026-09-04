@@ -414,13 +414,35 @@ static void add_gen_qr(lv_obj_t *parent)
 
 // Reconstrói a página CARTELA: cabeçalho + lista numerada + QR (ou o "como joga"
 // quando ainda não há cartela).
+// s_cart_hdr é reaproveitado pelos 3 estados da página (regras / aguardando
+// letra / letra sorteada), então cada estado precisa reafirmar sua própria
+// fonte e modo de quebra — senão o estilo do estado anterior vaza.
+static void set_cart_hdr_kicker(const char *txt)
+{
+    lv_label_set_text(s_cart_hdr, txt);
+    lv_obj_set_style_text_font(s_cart_hdr, &kit_mono_20, 0);
+    lv_obj_set_style_text_letter_space(s_cart_hdr, 3, 0);
+    lv_label_set_long_mode(s_cart_hdr, LV_LABEL_LONG_CLIP);
+}
+
+// Padrão da Mímica: kit_sans_28 em caixa normal, quebra de linha — mono
+// apagado em caixa alta numa tela de 1,8" não se lê (ver RULES abaixo).
+static void set_cart_hdr_body(const char *txt)
+{
+    lv_label_set_text(s_cart_hdr, txt);
+    lv_obj_set_style_text_font(s_cart_hdr, &kit_sans_28, 0);
+    lv_obj_set_style_text_letter_space(s_cart_hdr, 0, 0);
+    lv_label_set_long_mode(s_cart_hdr, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_cart_hdr, X_CONTENT);
+}
+
 static void build_cart_page(void)
 {
     if (!s_cart_list) return;
     lv_obj_clean(s_cart_list);
 
     if (s_ncart == 0) {
-        lv_label_set_text(s_cart_hdr, "COMO JOGA");
+        set_cart_hdr_kicker("COMO JOGA");
 
         // Padrão da Mímica: um corpo em kit_sans_28 (caixa normal, quebra
         // linha) — mono apagado em caixa alta numa tela de 1,8" não se lê.
@@ -440,10 +462,13 @@ static void build_cart_page(void)
         return;
     }
 
-    if (s_letter)
-        lv_label_set_text_fmt(s_cart_hdr, "LETRA \xC2\xB7 %c", s_letter);
-    else
-        lv_label_set_text(s_cart_hdr, "TOQUE PARA SORTEAR A LETRA");
+    if (s_letter) {
+        char hdr[24];
+        snprintf(hdr, sizeof hdr, "LETRA \xC2\xB7 %c", s_letter);
+        set_cart_hdr_kicker(hdr);
+    } else {
+        set_cart_hdr_body("Essas s\xC3\xA3o as categorias da rodada:");
+    }
 
     for (int i = 0; i < s_ncart; i++) {
         lv_obj_t *row = plain_box(s_cart_list);
