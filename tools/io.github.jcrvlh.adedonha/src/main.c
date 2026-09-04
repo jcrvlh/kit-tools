@@ -19,7 +19,9 @@
  *   - JOGO: a letra sorteada em kit_display_72, o relógio MM:SS em
  *     kit_display_44 e o botão sensível ao estado. Tempo esgotado = overlay
  *     azul "TEMPO" com o alarme (1º toque cala, 2º vai pra próxima letra).
- *   - CARTELA: a lista das categorias sorteadas (o que se copia pro papel).
+ *   - CARTELA: "como joga" (padrão da Mímica) antes do 1º sorteio; depois, a
+ *     lista numerada das categorias + um QR pro gerador de folhas web
+ *     (web-installer/adedonha.html) — imprima e jogue de caneta.
  *
  * Sorteio de letras SEM reposição (saco de 16 ou 26) via Random API/TRNG.
  * Saco vazio → reembaralha sozinho. Trocar o conjunto de letras / as categorias
@@ -108,6 +110,17 @@ static const char *const CATS[] = {
 };
 #define CATS_N     ((int)(sizeof(CATS) / sizeof(CATS[0])))
 #define CART_MAX   8
+
+// Gerador de folhas pra papel e caneta — web-installer/adedonha.html no site.
+// ?c= leva os slugs das categorias sorteadas (mesma normalização do JS: minúscula
+// ASCII, sem acento nem espaço). Página CARTELA mostra o QR depois do 1º sorteio.
+#define GEN_URL_BASE  "https://jcrvlh.github.io/kit/adedonha.html?c="
+#define GEN_URL_MAX   256
+
+static const char GEN_NOTE[] =
+    "Aponte a c\xC3\xA2mera do celular no c\xC3\xB3""digo. Imprima as folhas e jogue "
+    "no papel \xE2\x80\x94 rende mais que tempo de tela. Se preferir, d\xC3\xA1 pra "
+    "jogar pela web, e o site tamb\xC3\xA9m imprime pra voc\xC3\xAA.";
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -322,7 +335,84 @@ static void sync_segs(void)
     sync_seg(s_letras_pills, s_letras_lbls, 2, s_letras);
 }
 
-// Reconstrói a página CARTELA: cabeçalho + lista numerada (ou o "como joga"
+// "Desenho animado" -> "desenhoanimado": minúscula ASCII, sem acento nem
+// separador. Espelha o norm() do gerador web (web-installer/adedonha.html), pra
+// o QR abrir a mesma cartela.
+static void slug_cat(char *dst, size_t cap, const char *src)
+{
+    size_t o = 0;
+    for (const unsigned char *p = (const unsigned char *)src; *p && o + 1 < cap; p++) {
+        unsigned char c = *p, base = 0;
+        if (c == 0xC3 && p[1]) {            // Latin-1 (U+00C0..U+00FF) em UTF-8
+            unsigned char l = *++p;
+            if      (l >= 0x80 && l <= 0x86) base = 'a';
+            else if (l == 0x87)              base = 'c';
+            else if (l >= 0x88 && l <= 0x8B) base = 'e';
+            else if (l >= 0x8C && l <= 0x8F) base = 'i';
+            else if (l >= 0x92 && l <= 0x96) base = 'o';
+            else if (l >= 0x99 && l <= 0x9C) base = 'u';
+            else if (l >= 0xA0 && l <= 0xA6) base = 'a';
+            else if (l == 0xA7)              base = 'c';
+            else if (l >= 0xA8 && l <= 0xAB) base = 'e';
+            else if (l >= 0xAC && l <= 0xAF) base = 'i';
+            else if (l >= 0xB2 && l <= 0xB6) base = 'o';
+            else if (l >= 0xB9 && l <= 0xBC) base = 'u';
+            if (base) dst[o++] = base;
+            continue;
+        }
+        if      (c >= 'A' && c <= 'Z') dst[o++] = (char)(c - 'A' + 'a');
+        else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) dst[o++] = (char)c;
+        /* espaço, '(', ')', '-', '.' caem fora */
+    }
+    dst[o] = 0;
+}
+
+// URL do gerador de folhas com as categorias da cartela atual.
+static void build_gen_url(char *url, size_t cap)
+{
+    int n = snprintf(url, cap, "%s", GEN_URL_BASE);
+    size_t o = (n > 0 && (size_t)n < cap) ? (size_t)n : cap - 1;
+    for (int i = 0; i < s_ncart && o + 1 < cap; i++) {
+        if (i) url[o++] = ',';
+        char s[40];
+        slug_cat(s, sizeof s, CATS[s_cart[i]]);
+        int k = snprintf(url + o, cap - o, "%s", s);
+        if (k > 0) o += ((size_t)k < cap - o) ? (size_t)k : cap - o - 1;
+    }
+    url[o] = 0;
+}
+
+// QR pro gerador de folhas + a nota que puxa pro papel. É a exceção ao preto
+// AMOLED: quadrado branco, código no KIT_COLOR_BG, pra ler numa câmera.
+static void add_gen_qr(lv_obj_t *parent)
+{
+    lv_obj_t *box = plain_box(parent);
+    lv_obj_set_width(box, X_CONTENT);
+    lv_obj_set_height(box, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(box, 14, 0);
+    lv_obj_set_style_pad_top(box, 6, 0);
+
+    lv_obj_t *qr = lv_qrcode_create(box);
+    lv_qrcode_set_size(qr, 148);
+    lv_qrcode_set_dark_color(qr, lv_color_hex(KIT_COLOR_BG));
+    lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
+    lv_qrcode_set_quiet_zone(qr, true);
+    lv_obj_set_style_border_width(qr, 8, 0);
+    lv_obj_set_style_border_color(qr, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_radius(qr, 3, 0);
+
+    char url[GEN_URL_MAX];
+    build_gen_url(url, sizeof url);
+    lv_qrcode_update(qr, url, (uint32_t)strlen(url));
+
+    lv_obj_t *note = add_label(box, GEN_NOTE, KIT_COLOR_TEXT, &kit_sans_28, 0);
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(note, X_CONTENT);
+}
+
+// Reconstrói a página CARTELA: cabeçalho + lista numerada + QR (ou o "como joga"
 // quando ainda não há cartela).
 static void build_cart_page(void)
 {
@@ -332,17 +422,21 @@ static void build_cart_page(void)
     if (s_ncart == 0) {
         lv_label_set_text(s_cart_hdr, "COMO JOGA");
 
-        static const char *const steps[4] = {
-            "1 \xC2\xB7 O KIT SORTEIA A CARTELA. TODOS COPIAM AS CATEGORIAS COMO COLUNAS NO PAPEL.",
-            "2 \xC2\xB7 O KIT SORTEIA UMA LETRA E O TEMPO COME\xC3\x87""A A CORRER.",
-            "3 \xC2\xB7 CADA UM PREENCHE UMA PALAVRA POR COLUNA COM AQUELA LETRA - AT\xC3\x89 O TEMPO ACABAR OU ALGU\xC3\x89M GRITAR STOP.",
-            "4 \xC2\xB7 CONFEREM E PONTUAM NO PAPEL. O KIT SORTEIA A PR\xC3\x93XIMA LETRA NA MESMA CARTELA.",
-        };
-        for (int i = 0; i < 4; i++) {
-            lv_obj_t *b = add_label(s_cart_list, steps[i], KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
-            lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(b, X_CONTENT);
-        }
+        // Padrão da Mímica: um corpo em kit_sans_28 (caixa normal, quebra
+        // linha) — mono apagado em caixa alta numa tela de 1,8" não se lê.
+        static const char RULES[] =
+            "1. O KIT sorteia a cartela uma vez. Todos copiam as categorias como "
+            "colunas numa folha \xE2\x80\x94 uma folha por pessoa.\n\n"
+            "2. O KIT sorteia uma letra e o tempo come\xC3\xA7""a a correr.\n\n"
+            "3. Cada um escreve uma palavra por coluna come\xC3\xA7""ando com aquela "
+            "letra, at\xC3\xA9 o tempo acabar ou algu\xC3\xA9m gritar STOP.\n\n"
+            "4. A mesa confere e soma os pontos no papel. O KIT sorteia a "
+            "pr\xC3\xB3xima letra na mesma cartela.\n\n"
+            "Melhor com papel e caneta: depois de sortear a cartela aparece "
+            "aqui um QR pra abrir e imprimir as folhas.";
+        lv_obj_t *b = add_label(s_cart_list, RULES, KIT_COLOR_TEXT, &kit_sans_28, 0);
+        lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(b, X_CONTENT);
         return;
     }
 
@@ -366,6 +460,8 @@ static void build_cart_page(void)
         lv_label_set_long_mode(name, LV_LABEL_LONG_WRAP);
         lv_obj_set_flex_grow(name, 1);
     }
+
+    add_gen_qr(s_cart_list);
 }
 
 static void sync_stage(void)
@@ -1058,7 +1154,7 @@ static void build_page_cart(lv_obj_t *tile)
     lv_obj_set_flex_flow(wrap, LV_FLEX_FLOW_COLUMN);
     lv_obj_remove_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
 
-    s_cart_hdr = add_label(wrap, "COMO JOGA", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 3);
+    s_cart_hdr = add_label(wrap, "COMO JOGA", KIT_COLOR_TEXT, &kit_mono_20, 3);
 
     s_cart_list = plain_box(wrap);
     lv_obj_add_flag(s_cart_list, LV_OBJ_FLAG_SCROLLABLE);
