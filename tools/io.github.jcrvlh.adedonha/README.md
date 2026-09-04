@@ -56,8 +56,9 @@ imprime, ou — no alternador **CATEGORIAS / PREENCHER** — deixa anotar as
 respostas no próprio celular (salvo em `localStorage`). A nota puxa pro papel e
 caneta — a web fica como alternativa, e ela também imprime.
 
-Exige **runtime ≥ 0.3.0** (quando `lv_qrcode_*` entrou na superfície das Tools);
-o `kit-cli build --target xtensa` compila com `-DLV_USE_QRCODE=1`.
+Exige **runtime ≥ 0.3.1** — `lv_qrcode_*` (QR, entrou em 0.3.0) e `strcpy` (que o
+GCC sintetiza no `.so`; entrou em 0.3.1). O `kit-cli build --target xtensa`
+compila com `-DLV_USE_QRCODE=1`.
 
 ## Sorteios
 

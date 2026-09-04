@@ -118,9 +118,9 @@ static const char *const CATS[] = {
 #define GEN_URL_MAX   256
 
 static const char GEN_NOTE[] =
-    "Aponte a c\xC3\xA2mera do celular no c\xC3\xB3""digo. Imprima as folhas e jogue "
-    "no papel \xE2\x80\x94 rende mais que tempo de tela. Se preferir, d\xC3\xA1 pra "
-    "jogar pela web, e o site tamb\xC3\xA9m imprime pra voc\xC3\xAA.";
+    "Aponte a c\xC3\xA2mera do celular para o QR Code. Voc\xC3\xAA pode imprimir "
+    "as cartelas ou, se preferir, jogar pelo navegador. Mas recomendamos "
+    "fortemente usar papel e l\xC3\xA1pis. \xC3\x89 mais legal.";
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -392,7 +392,7 @@ static void add_gen_qr(lv_obj_t *parent)
     lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(box, 14, 0);
-    lv_obj_set_style_pad_top(box, 6, 0);
+    lv_obj_set_style_pad_top(box, 34, 0);   // respiro entre a lista de categorias e o QR
 
     lv_obj_t *qr = lv_qrcode_create(box);
     lv_qrcode_set_size(qr, 148);
@@ -426,7 +426,7 @@ static void build_cart_page(void)
         // linha) — mono apagado em caixa alta numa tela de 1,8" não se lê.
         static const char RULES[] =
             "1. O KIT sorteia a cartela uma vez. Todos copiam as categorias como "
-            "colunas numa folha \xE2\x80\x94 uma folha por pessoa.\n\n"
+            "colunas numa folha, uma folha por pessoa.\n\n"
             "2. O KIT sorteia uma letra e o tempo come\xC3\xA7""a a correr.\n\n"
             "3. Cada um escreve uma palavra por coluna come\xC3\xA7""ando com aquela "
             "letra, at\xC3\xA9 o tempo acabar ou algu\xC3\xA9m gritar STOP.\n\n"
