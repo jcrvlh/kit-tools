@@ -7,7 +7,8 @@ toca o alarme. Ninguém pontua no aparelho — cada um confere e soma no papel.
 
 ## Fluxo
 
-1. **Sorteia a cartela uma vez** → todos copiam as categorias como colunas.
+1. **Sorteia a cartela uma vez** → todos copiam as categorias como colunas (ou
+   apontam a câmera no **QR** da página CARTELA e imprimem as folhas).
 2. **Sorteia uma letra** (botão, toque no palco ou **chacoalhando**) → o tempo
    começa a correr.
 3. Todos preenchem uma palavra por coluna com aquela letra, até **o tempo
@@ -42,8 +43,21 @@ alarme**; o 2º (ou o botão `PRÓXIMA LETRA`) sorteia a próxima letra.
 
 ### CARTELA
 
-A lista numerada das categorias sorteadas (o que se copia pro papel). Antes do
-primeiro sorteio, mostra os 4 passos do "como joga".
+Antes do primeiro sorteio, o **"como joga"** no padrão da Mímica — um corpo em
+`kit_sans_28` (caixa normal, quebra linha, rolável), não mais quatro linhas de
+mono apagado.
+
+Depois do sorteio: a **lista numerada das categorias** + um **QR** pro gerador de
+folhas web (`web-installer/adedonha.html`, publicado em
+`jcrvlh.github.io/kit/adedonha.html`). O QR leva os slugs das categorias da
+rodada na URL (`?c=nome,animal,fruta,…`); a página monta uma folha A4 por pessoa
+(coluna da LETRA + uma coluna por categoria + PONTOS, N rodadas em branco) e
+imprime, ou — no alternador **CATEGORIAS / PREENCHER** — deixa anotar as
+respostas no próprio celular (salvo em `localStorage`). A nota puxa pro papel e
+caneta — a web fica como alternativa, e ela também imprime.
+
+Exige **runtime ≥ 0.3.0** (quando `lv_qrcode_*` entrou na superfície das Tools);
+o `kit-cli build --target xtensa` compila com `-DLV_USE_QRCODE=1`.
 
 ## Sorteios
 
