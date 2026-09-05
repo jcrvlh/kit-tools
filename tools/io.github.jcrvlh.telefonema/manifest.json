@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.telefonema",
+  "name": "Telefonema",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Jogo de reflexo de mesa: o KIT toca sozinho na mesa, alguns toques são trotes e um é o certo — quem atender no toque certo primeiro ganha.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#C6472F",
+  "home_icon": "phone",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "storage", "time", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}
