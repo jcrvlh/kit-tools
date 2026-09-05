@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.estouro",
+  "name": "Estouro",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa: chacoalhe o KIT e passe adiante. Um limiar escondido decide quando estoura — ninguém sabe quando. Quem estiver segurando sai da roda.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#E9B23C",
+  "home_icon": "estouro",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "random", "storage", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}
