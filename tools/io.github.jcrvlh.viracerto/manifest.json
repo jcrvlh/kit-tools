@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.viracerto",
+  "name": "Vira Certo",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.4.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa: cada rodada sorteia um alvo (\"GIRE 130 À ESQUERDA\", \"INCLINE 40 PRA BAIXO\"), igual pra todo mundo. Gire ou incline o KIT tentando parar bem em cima do número. Quanto mais perto, mais pontos. A dificuldade sobe a cada rodada — a última passa de uma volta inteira.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#2C3CC4",
+  "home_icon": "dial",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "random", "storage", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}
