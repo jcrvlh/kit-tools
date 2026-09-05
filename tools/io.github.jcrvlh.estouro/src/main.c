@@ -61,8 +61,8 @@
 #define FLASH_TICK_MS 420
 
 // Pulso ambiente de tensão (fundo da página JOGO, ver mais abaixo).
-#define PULSE_PERIOD_CALM_MS 620.0f   // batimento com tensão 0
-#define PULSE_PERIOD_SPAN_MS 480.0f   // quanto encurta até a tensão máxima
+#define PULSE_PERIOD_CALM_MS 620   // batimento com tensão 0
+#define PULSE_PERIOD_SPAN_MS 480   // quanto encurta até a tensão máxima
 #define PULSE_OPA_AMBIENT     LV_OPA_20
 
 // Flash forte no instante de cada chacoalhada registrada.
@@ -88,10 +88,13 @@ static int          s_threshold    = 0;
 static game_state_t s_state        = GSTATE_IDLE;
 static uint32_t     s_accent       = KIT_COLOR_YELLOW;
 
-// Proporções em que o aviso muda de cor (calmo->alerta->perigo), sorteadas
-// de novo a cada rodada em roll_threshold() — ver comentário lá.
-static float s_yellow_frac = 0.45f;
-static float s_red_frac    = 0.80f;
+// Proporções em que o aviso muda de cor (calmo->alerta->perigo), em
+// permilagem (0..1000), sorteadas de novo a cada rodada em roll_threshold()
+// — ver comentário lá. Ponto fixo inteiro de propósito: um .so de Tool não
+// resolve __divsf3 (divisão de float) no elf_loader do KIT — nada de float
+// nesta Tool, só inteiro de 32 bits.
+static int s_yellow_permille = 450;
+static int s_red_permille    = 800;
 
 // --- objetos LVGL --------------------------------------------------------
 static lv_obj_t *s_screen        = NULL;
@@ -214,9 +217,9 @@ static uint32_t tension_color(void)
     // Nunca apagado: mesmo calmo, o texto precisa ler bem no AMOLED — só sobe
     // pra cor de alerta/perigo conforme a proporção chacoalhada/limiar.
     if (s_threshold <= 0) return KIT_COLOR_TEXT;
-    float ratio = (float)s_shake_count / (float)s_threshold;
-    if (ratio < s_yellow_frac) return KIT_COLOR_TEXT;
-    if (ratio < s_red_frac)    return s_accent;
+    int ratio_pm = (s_shake_count * 1000) / s_threshold;   // permilagem, só inteiro
+    if (ratio_pm < s_yellow_permille) return KIT_COLOR_TEXT;
+    if (ratio_pm < s_red_permille)    return s_accent;
     return KIT_COLOR_RED;
 }
 
@@ -273,10 +276,8 @@ static void roll_threshold(void)
     // escalada calmo -> alerta -> perigo, mas sorteadas de novo por rodada —
     // se fossem sempre as mesmas 45%/80%, dava pra "aprender" contando
     // chacoalhadas em quantas geralmente muda de cor e estimar o limiar.
-    int y = (s_api && s_api->random) ? s_api->random->range(250, 550) : 400;   // 25%-55%
-    int r = (s_api && s_api->random) ? s_api->random->range(650, 900) : 800;   // 65%-90%
-    s_yellow_frac = y / 1000.0f;
-    s_red_frac    = r / 1000.0f;
+    s_yellow_permille = (s_api && s_api->random) ? s_api->random->range(250, 550) : 400;   // 25%-55%
+    s_red_permille    = (s_api && s_api->random) ? s_api->random->range(650, 900) : 800;   // 65%-90%
 }
 
 // --- overlay de estouro / fim -------------------------------------------
@@ -345,12 +346,15 @@ static void show_over_overlay(void)
 // parado entre uma chacoalhada e outra. Mesma curva de suspense-depois-
 // pânico do `audio->fuse`.
 
+// Curva "medo -> pânico" em ponto fixo (permilagem, 0..1000) — mistura
+// linear + quadrática, igual à do motor de áudio do Pavio, só que sem float.
 static uint32_t pulse_period_ms(void)
 {
-    float t = (s_threshold > 0) ? (float)s_shake_count / (float)s_threshold : 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    float shape = 0.30f * t + 0.70f * t * t;
-    return (uint32_t)(PULSE_PERIOD_CALM_MS - PULSE_PERIOD_SPAN_MS * shape);
+    int t_pm = (s_threshold > 0) ? (s_shake_count * 1000) / s_threshold : 0;
+    if (t_pm > 1000) t_pm = 1000;
+    int t2_pm = (t_pm * t_pm) / 1000;
+    int shape_pm = (300 * t_pm + 700 * t2_pm) / 1000;
+    return (uint32_t)(PULSE_PERIOD_CALM_MS - (PULSE_PERIOD_SPAN_MS * shape_pm) / 1000);
 }
 
 static void stop_pulse(void)
@@ -431,8 +435,7 @@ static void register_shake(void)
         return;
     }
 
-    float ratio = (float)s_shake_count / (float)s_threshold;
-    int tension = (int)(ratio * 255.0f);
+    int tension = (s_shake_count * 255) / s_threshold;
     if (tension < 0) tension = 0;
     if (tension > 255) tension = 255;
     if (s_api && s_api->audio) {
