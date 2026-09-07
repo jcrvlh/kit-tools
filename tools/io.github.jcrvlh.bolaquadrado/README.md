@@ -44,12 +44,16 @@ do modo normal — os dois jogos pedem reflexos bem diferentes.
   virou componente). Só a tabela de HIGHSCORES continua feita à mão.
   - Página 0: **AJUSTE** — chips de TEMPO (15/30/60 s) e MODO INVERTE
     (DESLIGADO/LIGADO), rola se não couber.
-  - Página 1: **JOGO** — três estados no mesmo tile:
+  - Página 1: **JOGO** — quatro estados no mesmo tile (o swipe entre as
+    páginas fica **travado** enquanto a rodada não termina):
     - parado: recorde do modo selecionado + "TOQUE EM COMEÇAR", botão
       COMEÇAR fixo no rodapé;
     - jogando: placar, tempo restante e recorde no topo; as duas metades
       com as formas (linha fina só de divisa, sem moldura), ícone do alvo
       atual acima só com Modo Inverte ligado;
+    - fim de rodada: overlay vermelho cheio **TEMPO** (tempo zerou) ou
+      **PERDEU** (tocou na bola) + "TOQUE PARA CONTINUAR" — uma barreira
+      antes do resultado pra não apertar SALVAR no susto;
     - resultado: pontuação grande e, se entrou no top-5, o **seletor de
       sigla** (`kit_ui_sigla`: toque avança a letra, arraste pra cima/baixo
       gira como roleta, com tolerância pra não trocar a letra ao soltar o
