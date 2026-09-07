@@ -21,6 +21,7 @@
 #include "kit_tool_api.h"
 #include "kit_theme.h"
 #include "kit_fonts.h"
+#include "kit_ui.h"
 #include "fora_game.h"
 #include "fora_words.h"
 #include <string.h>
@@ -49,10 +50,8 @@
 static const kit_api_table_t *s_api;
 static fora_state_t s_game;
 
-static lv_obj_t *s_screen, *s_tv, *s_tiles[3], *s_dots[3], *s_dots_box;
-
-/* AJUSTES ◄─ PALCO ─► COMO JOGAR */
-#define F_TILES 3
+static lv_obj_t   *s_screen;
+static kit_ui_shell_t s_shell;   /* titlebar + tileview: AJUSTES ◄─ PALCO ─► COMO JOGAR */
 
 static const char RULES[] =
     "O FORA n\xC3\xA3o sabe a palavra secreta. Todos os outros sabem qual \xC3\xA9.\n\n"
@@ -66,7 +65,8 @@ static const char RULES[] =
 
 static lv_obj_t *s_players_lbl;
 static int       s_name_sel;
-static lv_obj_t *s_name_lbl, *s_slot_lbl[3], *s_name_clear;
+static lv_obj_t *s_name_lbl;
+static kit_ui_sigla_t s_sigla;   /* seletor de sigla do jogador selecionado (modo "pode ficar em branco") */
 static lv_obj_t *s_rounds_lbl, *s_cat_lbl;
 
 static lv_obj_t *s_meta, *s_big, *s_sub, *s_detail, *s_stage_col;
@@ -83,8 +83,8 @@ static fora_phase_t s_next_phase;
 
 static void render_phase(void);
 static void sync_ajustes(void);
-static void sync_dots(void);
 static void ident_text(lv_obj_t *o, int player);
+static void on_touch(const kit_input_event_t *ev, void *user_data);
 
 /* --- áudio: assinatura de suspense e blefe (D menor / A menor) ------------ */
 
@@ -290,32 +290,8 @@ static void load_config(void)
 
 /* --- navegação ------------------------------------------------------- */
 
-static void sync_dots(void)
-{
-    lv_obj_t *act = s_tv ? lv_tileview_get_tile_active(s_tv) : NULL;
-    for (int i = 0; i < F_TILES; i++) {
-        bool on = (act == s_tiles[i]);
-        lv_obj_set_style_bg_color(s_dots[i], lv_color_hex(on ? F_ACCENT : KIT_COLOR_LINE), 0);
-        lv_obj_set_size(s_dots[i], on ? 20 : 8, 8);
-    }
-}
-
-static void tv_changed_cb(lv_event_t *e) { (void)e; sync_dots(); }
-
-static void set_swipe(bool on)
-{
-    if (!s_tv) return;
-    if (on) {
-        lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
-    } else {
-        lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_OFF);
-        lv_obj_remove_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
-    }
-    show(s_dots_box, on);
-    if (on) sync_dots();
-}
-
-static void back_cb(lv_event_t *e) { (void)e; if (s_api && s_api->system) s_api->system->exit(); }
+/* trava o swipe fora do PALCO durante a partida (CONFIG/RESULT liberam) */
+static void set_swipe(bool on) { kit_ui_shell_lock(&s_shell, !on); }
 
 /* --- AJUSTES: helpers de nome ---------------------------------------- */
 
@@ -357,15 +333,22 @@ static void sync_ajustes(void)
     if (s_name_sel >= s_game.num_players) s_name_sel = 0;
     name_sel_text(b, sizeof b);
     lv_label_set_text(s_name_lbl, b);
-    char sl[3];
+
+    /* re-aponta o seletor de sigla pro jogador selecionado (não dispara on_change) */
+    char sl[4];
     name_slots(s_name_sel, sl);
-    for (int k = 0; k < 3; k++) {
-        char t[2] = { sl[k] == ' ' ? '-' : sl[k], 0 };
-        lv_label_set_text(s_slot_lbl[k], t);
-        lv_obj_set_style_text_color(s_slot_lbl[k],
-            lv_color_hex(sl[k] == ' ' ? KIT_COLOR_TEXT_MUTED : KIT_COLOR_TEXT), 0);
-    }
-    show(s_name_clear, fora_game_has_name(&s_game, s_name_sel));
+    sl[3] = 0;
+    kit_ui_sigla_set(&s_sigla, sl);
+}
+
+/* a cada letra girada (ou APAGAR): grava a sigla do jogador e persiste.
+   `letters` vem "AB " no modo blank — name_store apara os espaços. */
+static void sigla_changed_cb(const char *letters, void *u)
+{
+    (void)u;
+    char in[3] = { letters[0], letters[1], letters[2] };
+    name_store(s_name_sel, in);
+    save_config();
 }
 
 /* --- AJUSTES: callbacks -------------------------------------------- */
@@ -407,29 +390,6 @@ static void name_sel_cb(lv_event_t *e)
     s_name_sel = (s_name_sel + d + s_game.num_players) % s_game.num_players;
     sync_ajustes();
     sfx(SFX_TAP);
-}
-
-static void slot_cb(lv_event_t *e)
-{
-    int k = (int)(intptr_t)lv_event_get_user_data(e);
-    char sl[3];
-    name_slots(s_name_sel, sl);
-    char c = sl[k];
-    sl[k] = c == ' ' ? 'A' : c == 'Z' ? ' ' : c + 1;
-    name_store(s_name_sel, sl);
-    sync_ajustes();
-    save_config();
-    sfx(SFX_TAP);
-}
-
-/* apaga a sigla do jogador selecionado → volta pro "JOGADOR N" padrão */
-static void name_clear_cb(lv_event_t *e)
-{
-    (void)e;
-    s_game.player_names[s_name_sel][0] = 0;
-    sync_ajustes();
-    save_config();
-    sfx(SFX_PASS);
 }
 
 /* --- PALCO: fluxo -------------------------------------------------- */
@@ -882,32 +842,9 @@ static void render_phase(void)
 
 /* --- construção -------------------------------------------------- */
 
-static void build_titlebar(void)
-{
-    lv_obj_t *c = tap(rect(s_screen, F_STEP, F_STEP, KIT_COLOR_SURFACE, 18), back_cb, 0);
-    lv_obj_align(c, LV_ALIGN_TOP_LEFT, F_PAD, 16);
-    lv_obj_center(lbl(c, KIT_ICON_BACK, KIT_COLOR_TEXT, &kit_display_44, 0, 0));
-    lv_obj_t *tt = lbl(s_screen, "FORA", KIT_COLOR_TEXT, &kit_mono_26, 3, 0);
-    lv_obj_align(tt, LV_ALIGN_TOP_LEFT, F_PAD + F_STEP + 12, 30);
-
-    /* indicador de paginação AJUSTES ◄─► PALCO (igual DADOS) */
-    s_dots_box = pane(s_screen);
-    lv_obj_set_size(s_dots_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(s_dots_box, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_dots_box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(s_dots_box, 6, 0);
-    lv_obj_align(s_dots_box, LV_ALIGN_TOP_RIGHT, -F_PAD, 40);
-    for (int i = 0; i < F_TILES; i++)
-        s_dots[i] = rect(s_dots_box, 8, 8, KIT_COLOR_LINE, 4);
-}
-
 static void build_rules(lv_obj_t *tile)
 {
-    lv_obj_t *p = scroll_col(tile, 14);
-    lbl(p, "COMO JOGAR", KIT_COLOR_TEXT, &kit_mono_26, 3, 0);
-    lv_obj_t *body = lbl(p, RULES, KIT_COLOR_TEXT, &kit_sans_22, 0, 0);
-    lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(body, F_CONTENT);
+    kit_ui_help_page(tile, "COMO JOGAR", RULES);
 }
 
 static void build_adjust(lv_obj_t *tile)
@@ -916,18 +853,16 @@ static void build_adjust(lv_obj_t *tile)
 
     s_players_lbl = stepper(p, "JOGADORES", &kit_display_44, players_cb, -1, 1);
 
-    /* NOMES: seletor de jogador + 3 caixas de letra (toca = próxima letra) */
+    /* NOMES (opcional): stepper escolhe o jogador, o seletor de sigla edita a
+       sigla dele — 3 caixas A–Z, toque avança, arraste gira como roleta, e a
+       letra pode ficar em branco ("-") = "JOGADOR N". Componente kit_ui_sigla. */
     s_name_lbl = stepper(p, "NOMES (OPCIONAL)", &kit_mono_20, name_sel_cb, -1, 1);
-    lv_obj_t *sec = pane(p);
-    lv_obj_set_size(sec, lv_pct(100), 100);
-    flex(sec, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, 0, 12);
-    for (int k = 0; k < 3; k++) {
-        lv_obj_t *box = tap(rect(sec, 92, 96, KIT_COLOR_SURFACE, 16), slot_cb, k);
-        s_slot_lbl[k] = lbl(box, "-", KIT_COLOR_TEXT, &kit_display_72, 0, 0);
-        lv_obj_center(s_slot_lbl[k]);
-    }
-    s_name_clear = tap(rect(p, lv_pct(100), F_STEP, KIT_COLOR_SURFACE, 15), name_clear_cb, 0);
-    lv_obj_center(lbl(s_name_clear, "APAGAR NOME", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2, 0));
+    kit_ui_sigla_opts_t so = { .allow_blank = true, .on_change = sigla_changed_cb };
+    kit_ui_sigla(&s_sigla, p, F_ACCENT, NULL, &so);
+    /* congela as duas navegações durante o arraste da letra: a página (vertical)
+       e o tileview AJUSTES◄─►PALCO◄─►COMO JOGAR (horizontal) */
+    kit_ui_sigla_scroll_lock(&s_sigla, p, LV_DIR_VER);
+    kit_ui_sigla_scroll_lock(&s_sigla, s_shell.tv, LV_DIR_HOR);
 
     s_rounds_lbl = stepper(p, "RODADAS", &kit_display_44, round_cb, -1, 1);
 
@@ -988,19 +923,17 @@ static void build_palco(lv_obj_t *tile)
 
 static void build_tileview(void)
 {
-    s_tv = lv_tileview_create(s_screen);
-    lv_obj_set_size(s_tv, F_SCR_W, F_PAGE_H);
-    lv_obj_set_pos(s_tv, 0, F_TITLEBAR);
-    lv_obj_set_style_bg_opa(s_tv, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_tv, 0, 0);
-    lv_obj_set_scrollbar_mode(s_tv, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(s_tv, tv_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    s_tiles[0] = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_HOR);
-    s_tiles[1] = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_HOR);
-    s_tiles[2] = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_HOR);
-    build_adjust(s_tiles[0]);
-    build_palco(s_tiles[1]);
-    build_rules(s_tiles[2]);
+    kit_ui_shell_tiles(&s_shell, NULL, NULL);   /* dots já sincronizam sozinhos */
+    build_adjust(s_shell.tiles[0]);
+    build_palco (s_shell.tiles[1]);
+    build_rules (s_shell.tiles[2]);
+}
+
+/* repassa o toque bruto pro seletor de sigla (roleta por arraste) */
+static void on_touch(const kit_input_event_t *ev, void *user_data)
+{
+    (void)user_data;
+    kit_ui_sigla_feed_touch(&s_sigla, ev);
 }
 
 #endif /* !KIT_SDK_STUBS */
@@ -1018,6 +951,7 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
 {
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
     s_api = ctx->api;
+    kit_ui_bind(s_api);
 
     memset(&s_game, 0, sizeof s_game);
     s_game.num_players = 5;
@@ -1033,12 +967,13 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
     lv_obj_set_style_bg_opa(s_screen, LV_OPA_COVER, 0);
     lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    build_titlebar();
+    kit_ui_shell_begin(&s_shell, s_screen, "FORA", F_ACCENT, 3);
     build_tileview();
 
     lv_obj_update_layout(s_screen);
-    lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_OFF);
-    sync_dots();
+    kit_ui_shell_open(&s_shell, 1);   /* começa no PALCO */
+
+    if (s_api->input) s_api->input->register_callback(on_touch, NULL);
 
     sync_ajustes();
     render_phase();
@@ -1050,8 +985,10 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
 void tool_destroy(void)
 {
     kill_timer();
+    if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
-    s_tv = NULL;
+    s_shell = (kit_ui_shell_t){0};
+    s_sigla = (kit_ui_sigla_t){0};
     s_api = NULL;
 }
 
