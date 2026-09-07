@@ -37,7 +37,11 @@ do modo normal — os dois jogos pedem reflexos bem diferentes.
 
 ## Estrutura da Tool
 
-- **UI**: Brutalist Bauhaus (`kit_theme.h` e `kit_fonts.h`).
+- **UI**: Brutalist Bauhaus, montada com a galeria de componentes do SDK
+  (`kit_ui.h`, doc em `jcrvlh/kit` → `tools-sdk/docs/ui_gallery.md`) —
+  `kit_ui_shell` (titlebar + tileview), `kit_ui_chips`, `kit_ui_help_page`,
+  `kit_ui_action` e `kit_ui_sigla` (o seletor de sigla nasceu nesta Tool e
+  virou componente). Só a tabela de HIGHSCORES continua feita à mão.
   - Página 0: **AJUSTE** — chips de TEMPO (15/30/60 s) e MODO INVERTE
     (DESLIGADO/LIGADO), rola se não couber.
   - Página 1: **JOGO** — três estados no mesmo tile:
@@ -46,12 +50,11 @@ do modo normal — os dois jogos pedem reflexos bem diferentes.
     - jogando: placar, tempo restante e recorde no topo; as duas metades
       com as formas (linha fina só de divisa, sem moldura), ícone do alvo
       atual acima só com Modo Inverte ligado;
-    - resultado: pontuação grande e, se entrou no top-5, as 3 caixas de
-      letra (toque pra avançar uma, ou arraste pra cima/baixo pra rolar —
-      roleta via `s_api->input`, já que o SDK de Tools não tem um widget de
-      rolagem pronto) + botão REDEFINIR; senão, `RECORDE: XXX NNN`. Mesmo
-      botão fixo do rodapé, agora rotulado SALVAR/JOGAR DE NOVO. Rola se
-      precisar.
+    - resultado: pontuação grande e, se entrou no top-5, o **seletor de
+      sigla** (`kit_ui_sigla`: toque avança a letra, arraste pra cima/baixo
+      gira como roleta, com tolerância pra não trocar a letra ao soltar o
+      dedo; botão REDEFINIR); senão, `RECORDE: XXX NNN`. Mesmo botão fixo do
+      rodapé, agora rotulado SALVAR/JOGAR DE NOVO. Rola se precisar.
   - Página 2: **COMO JOGA** (regra resumida + a homenagem), rola.
   - Página 3: **HIGHSCORES** — top-5 do modo normal e top-5 do Modo Inverte,
     em seções separadas.
@@ -64,7 +67,6 @@ do modo normal — os dois jogos pedem reflexos bem diferentes.
   (A4→D4) no erro, `KIT_SFX_TIMER_DONE` quando o tempo zera,
   `KIT_SFX_CONFIRM` ao salvar um highscore novo.
 - **Entradas**: toque — as duas metades da tela como alvo (nunca a forma em
-  si), os botões padrão, e o arraste vertical nas caixas de letra (usa
-  `kit_input_api_t.register_callback`, o único callback de toque bruto que
-  uma Tool pode registrar, escutando `KIT_INPUT_TOUCH_DOWN` só enquanto uma
-  caixa está pressionada — ver `on_touch()`/`letter_pressed_cb()` no código).
+  si) e os botões padrão. O arraste na roleta da sigla vai por
+  `kit_input_api_t.register_callback` (o único callback de toque bruto que
+  uma Tool pode registrar), repassado pra `kit_ui_sigla_feed_touch()`.
