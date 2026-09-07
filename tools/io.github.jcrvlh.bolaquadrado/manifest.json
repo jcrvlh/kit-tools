@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.bolaquadrado",
+  "name": "Quadrado",
+  "version": "1.0.1",
+  "version_code": 2,
+  "min_runtime": "0.3.1",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Homenagem ao primeiro app do autor (2017, Bola/Quadrado): toque sempre no quadrado, nunca na bola. Tempo escolhido no ajuste, Modo Inverte troca o alvo no meio da rodada, top-5 salvo no aparelho.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#2C3CC4",
+  "home_icon": "card",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "random", "storage", "audio", "input"],
+  "api_level": 1,
+  "assets": []
+}
