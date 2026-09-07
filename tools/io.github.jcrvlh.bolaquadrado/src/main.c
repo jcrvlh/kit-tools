@@ -16,11 +16,14 @@
  *
  * Highscores: top-5 por modo (pontuação + 3 iniciais) persistidos no
  * aparelho (storage->set_i32/get_i32, set_str/get_str), numa página própria.
- * Ao entrar no top-5, 3 caixas de letra pedem a inicial — arraste pra cima/
- * baixo em cada caixa pra rolar as letras (ou toque pra avançar uma),
- * pré-preenchidas com a última sigla usada, com botão pra redefinir. O
- * arraste usa o callback de toque bruto do input (s_api->input), já que o
- * SDK de Tools não expõe um widget de rolagem pronto.
+ * Ao entrar no top-5, o seletor de sigla (kit_ui_sigla) pede as 3 iniciais —
+ * toque avança uma letra, arraste gira como roleta, pré-preenchido com a
+ * última sigla usada.
+ *
+ * UI montada com a galeria de componentes tools-sdk/include/kit_ui.h — shell
+ * (titlebar + tileview), grade de chips do AJUSTE, página COMO JOGA, botão de
+ * ação e o seletor de sigla (que nasceu nesta Tool). Só a tabela de
+ * highscores continua feita à mão (ainda não está na galeria).
  *
  * Linguagem visual "Brutalist Bauhaus" (kit_theme.h / kit_fonts.h).
  * Toda a UI fica atrás de #ifndef KIT_SDK_STUBS — ver tool_lvgl_runtime.md.
@@ -29,6 +32,7 @@
 #include "kit_tool_api.h"
 #include "kit_theme.h"
 #include "kit_fonts.h"
+#include "kit_ui.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -37,7 +41,7 @@
 #ifndef KIT_SDK_STUBS
 
 // ---------------------------------------------------------------------------
-// Layout (368 × 448 — espelha as métricas do Estouro/Telefonema)
+// Layout (368 × 448)
 // ---------------------------------------------------------------------------
 #define KIT_DISPLAY_WIDTH   368
 #define KIT_DISPLAY_HEIGHT  448
@@ -45,7 +49,6 @@
 #define B_PAD        16
 #define B_CONTENT    (KIT_DISPLAY_WIDTH - 2 * B_PAD)   // 336
 #define B_TITLEBAR   88
-#define B_CHIP       56
 #define B_PAGE_H     (KIT_DISPLAY_HEIGHT - B_TITLEBAR) // 360
 #define B_BTN_H      76
 #define B_BTN_MARGIN 18
@@ -62,7 +65,6 @@
 
 #define POINTS_PER_HIT      5
 #define HS_COUNT            5
-#define LETTER_DRAG_STEP_PX 24   // px de arraste por letra — sensação de roleta
 
 static const int32_t DURATIONS[3] = { 15, 30, 60 };
 static const char *const DUR_LABELS[3] = { "15S", "30S", "60S" };
@@ -95,23 +97,15 @@ static char s_last_initials[4] = "AAA";   // última sigla digitada — pré-pre
 static bool s_square_on_left   = true;
 static bool s_target_is_square = true;    // com Modo Inverte desligado, é sempre true
 static int  s_pending_rank     = -1;      // posição no top-5 se a rodada acabar agora (-1 = não entra)
-static char s_edit_letters[3]  = { 'A', 'A', 'A' };
-
-// Arraste nas caixas de letra (roleta) — ver on_touch().
-static int s_drag_box    = -1;
-static int s_drag_last_y = 0;
-static int s_drag_accum  = 0;
 
 // --- objetos LVGL (todos zerados em tool_destroy) ---------------------
-static lv_obj_t *s_screen = NULL;
-static lv_obj_t *s_tv = NULL;
-static lv_obj_t *s_tiles[PAGES];
-static lv_obj_t *s_dots[PAGES];
+static lv_obj_t   *s_screen = NULL;
+static kit_ui_shell_t  s_shell;          // titlebar + tileview + dots
 static lv_timer_t *s_round_timer = NULL;
 
 // AJUSTE
-static lv_obj_t *s_dur_chips[3], *s_dur_lbls[3];
-static lv_obj_t *s_inv_chips[2], *s_inv_lbls[2];
+static kit_ui_chips_t s_dur;
+static kit_ui_chips_t s_inv;
 
 // JOGO — três estados no mesmo tile: parado, jogando, resultado.
 static lv_obj_t *s_idle_group     = NULL;
@@ -129,16 +123,10 @@ static lv_obj_t *s_shape[2]    = { NULL, NULL };   // forma dentro de cada metad
 static lv_obj_t *s_result_group   = NULL;
 static lv_obj_t *s_result_score   = NULL;
 static lv_obj_t *s_result_caption = NULL;
-static lv_obj_t *s_letters_row    = NULL;
-static lv_obj_t *s_letter_box[3];
-static lv_obj_t *s_letter_lbl[3];
-static lv_obj_t *s_reset_btn      = NULL;
+static kit_ui_sigla_t s_sigla;             // entrada das 3 iniciais no highscore
 
-// Botão de ação — compartilhado entre IDLE ("COMEÇAR") e RESULTADO
-// ("SALVAR"/"JOGAR DE NOVO"). Filho do tile, fixo no rodapé, escondido
-// durante o estado "jogando".
-static lv_obj_t *s_action_btn     = NULL;
-static lv_obj_t *s_action_btn_lbl = NULL;
+// Botão de ação — IDLE ("COMEÇAR") / RESULTADO ("SALVAR"/"JOGAR DE NOVO").
+static kit_ui_action_t s_action;
 
 // HIGHSCORES — uma seção por modo.
 static lv_obj_t *s_hsn_left[HS_COUNT], *s_hsn_right[HS_COUNT];
@@ -156,20 +144,14 @@ static lv_obj_t *add_label(lv_obj_t *parent, const char *txt, uint32_t color,
     return l;
 }
 
-// Container invisível de layout — NÃO usar para algo que precisa rolar
-// (remove a flag SCROLLABLE; ver build_page_setup/help/build_game_result,
-// que criam o próprio container quando precisam de scroll).
+// Container invisível de layout — não rola (ver build_game_result, que cria
+// o próprio container quando precisa de scroll).
 static lv_obj_t *plain_box(lv_obj_t *parent)
 {
     lv_obj_t *o = lv_obj_create(parent);
     lv_obj_remove_style_all(o);
     lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
     return o;
-}
-
-static uint32_t on_accent(void)
-{
-    return (s_accent == KIT_COLOR_YELLOW) ? KIT_COLOR_ON_YELLOW : KIT_COLOR_ON_COLOR;
 }
 
 // --- áudio: presets prontos + notas curtas na faixa confortável ---------
@@ -325,8 +307,8 @@ static void show_idle_state(void)
     lv_obj_remove_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(s_action_btn_lbl, "COMEÇAR");
-    lv_obj_remove_flag(s_action_btn, LV_OBJ_FLAG_HIDDEN);
+    kit_ui_action_set(&s_action, "COMEÇAR");
+    kit_ui_action_show(&s_action, true);
 }
 
 static void show_play_state(void)
@@ -335,7 +317,7 @@ static void show_play_state(void)
     lv_obj_add_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_action_btn, LV_OBJ_FLAG_HIDDEN);
+    kit_ui_action_show(&s_action, false);
 }
 
 static void show_result_state(void)
@@ -344,46 +326,7 @@ static void show_result_state(void)
     lv_obj_add_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_action_btn, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void show_letters(bool on)
-{
-    if (on) {
-        lv_obj_remove_flag(s_letters_row, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(s_letters_row, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-static void sync_letter_boxes(void)
-{
-    for (int k = 0; k < 3; k++) {
-        char t[2] = { s_edit_letters[k], 0 };
-        lv_label_set_text(s_letter_lbl[k], t);
-    }
-}
-
-// Avança (dir>0) ou volta (dir<0) uma letra na caixa k — usado tanto pelo
-// toque simples quanto pelo arraste (roleta).
-static void step_letter(int k, int dir)
-{
-    char c = s_edit_letters[k];
-    if (dir > 0) c = (c == 'Z') ? 'A' : (char)(c + 1);
-    else         c = (c == 'A') ? 'Z' : (char)(c - 1);
-    s_edit_letters[k] = c;
-    sync_letter_boxes();
-    sfx_click();
-}
-
-// Pré-preenche o editor com a última sigla usada (se for válida); senão AAA.
-static void prefill_edit_letters(void)
-{
-    bool valid = true;
-    for (int k = 0; k < 3; k++) if (s_last_initials[k] < 'A' || s_last_initials[k] > 'Z') valid = false;
-    for (int k = 0; k < 3; k++) s_edit_letters[k] = valid ? s_last_initials[k] : 'A';
+    kit_ui_action_show(&s_action, true);
 }
 
 static void sync_hs_rows(const hs_entry_t *t, lv_obj_t **left, lv_obj_t **right)
@@ -419,18 +362,17 @@ static void enter_result(void)
     hs_entry_t *t = hs_table(s_round_inverte);
     s_pending_rank = hs_rank_of(t, s_score);
     bool qualifies = s_pending_rank >= 0;
-    show_letters(qualifies);
+    kit_ui_sigla_show(&s_sigla, qualifies);
 
     if (qualifies) {
         lv_label_set_text(s_result_caption, s_pending_rank == 0 ? "RECORDE NOVO!" : "ENTROU NO TOP 5!");
-        prefill_edit_letters();
-        sync_letter_boxes();
-        lv_label_set_text(s_action_btn_lbl, "SALVAR");
+        kit_ui_sigla_set(&s_sigla, s_last_initials);   // pré-preenche com a última usada
+        kit_ui_action_set(&s_action, "SALVAR");
     } else {
         char buf[40];
         snprintf(buf, sizeof buf, "RECORDE: %s %d", t[0].initials, t[0].score);
         lv_label_set_text(s_result_caption, buf);
-        lv_label_set_text(s_action_btn_lbl, "JOGAR DE NOVO");
+        kit_ui_action_set(&s_action, "JOGAR DE NOVO");
     }
     show_result_state();
 }
@@ -485,8 +427,6 @@ static void on_miss(void)
 }
 
 // --- callbacks -----------------------------------------------------------
-static void back_cb(lv_event_t *e) { (void)e; if (s_api && s_api->system) s_api->system->exit(); }
-
 static void zone_cb(lv_event_t *e)
 {
     int side = (int)(intptr_t)lv_event_get_user_data(e);
@@ -496,58 +436,12 @@ static void zone_cb(lv_event_t *e)
     if (hit) on_hit(); else on_miss();
 }
 
-static void letter_cb(lv_event_t *e)
-{
-    int k = (int)(intptr_t)lv_event_get_user_data(e);
-    step_letter(k, +1);
-}
-
-// Roleta: o dedo pousa numa caixa (PRESSED) — LVGL já sabe em qual, sem eu
-// precisar calcular coordenada nenhuma. Enquanto durar o toque, o stream de
-// posição do input bruto (on_touch) acumula o deslocamento vertical e vai
-// avançando/voltando a letra a cada LETTER_DRAG_STEP_PX arrastados.
-//
-// A flag SCROLLABLE na própria caixa (ver build_game_result) já devia
-// bastar pra ela "absorver" o arraste, mas trava-se o scroll do
-// result_group aqui também, de propósito: sem isso, se a rolagem da tela
-// vazar durante o arraste da letra, a rolagem em si vira outro desafio pro
-// jogador — e o ponto aqui é escolher a sigla, não lutar com o scroll.
-static void letter_pressed_cb(lv_event_t *e)
-{
-    s_drag_box = (int)(intptr_t)lv_event_get_user_data(e);
-    s_drag_accum = 0;
-    s_drag_last_y = -1;   // -1 = ainda sem amostra; a próxima vira a referência
-    lv_obj_set_scroll_dir(s_result_group, LV_DIR_NONE);
-}
-
-static void letter_released_cb(lv_event_t *e)
-{
-    (void)e;
-    s_drag_box = -1;
-    lv_obj_set_scroll_dir(s_result_group, LV_DIR_VER);
-}
-
+// Toque bruto — só serve pra roleta de arraste do seletor de sigla
+// (kit_ui_sigla_feed_touch ignora tudo enquanto nenhuma caixa é arrastada).
 static void on_touch(const kit_input_event_t *ev, void *user_data)
 {
     (void)user_data;
-    if (ev->type != KIT_INPUT_TOUCH_DOWN || s_drag_box < 0) return;
-    if (s_drag_last_y < 0) { s_drag_last_y = ev->y; return; }
-
-    s_drag_accum += (ev->y - s_drag_last_y);
-    s_drag_last_y = ev->y;
-
-    // Arrastar pra CIMA (y diminuindo) avança a letra; pra BAIXO, volta —
-    // como girar uma roleta com o dedo.
-    while (s_drag_accum <= -LETTER_DRAG_STEP_PX) { step_letter(s_drag_box, +1); s_drag_accum += LETTER_DRAG_STEP_PX; }
-    while (s_drag_accum >=  LETTER_DRAG_STEP_PX) { step_letter(s_drag_box, -1); s_drag_accum -= LETTER_DRAG_STEP_PX; }
-}
-
-static void reset_letters_cb(lv_event_t *e)
-{
-    (void)e;
-    s_edit_letters[0] = s_edit_letters[1] = s_edit_letters[2] = 'A';
-    sync_letter_boxes();
-    sfx_click();
+    kit_ui_sigla_feed_touch(&s_sigla, ev);
 }
 
 static void action_btn_cb(lv_event_t *e)
@@ -557,11 +451,12 @@ static void action_btn_cb(lv_event_t *e)
 
     // STATE_RESULT:
     if (s_pending_rank >= 0) {
-        hs_insert(hs_table(s_round_inverte), s_score, s_edit_letters,
+        const char *sig = kit_ui_sigla_get(&s_sigla);
+        hs_insert(hs_table(s_round_inverte), s_score, sig,
                   hs_score_prefix(s_round_inverte), hs_init_prefix(s_round_inverte));
-        s_last_initials[0] = s_edit_letters[0];
-        s_last_initials[1] = s_edit_letters[1];
-        s_last_initials[2] = s_edit_letters[2];
+        s_last_initials[0] = sig[0];
+        s_last_initials[1] = sig[1];
+        s_last_initials[2] = sig[2];
         s_last_initials[3] = 0;
         save_last_initials();
         sync_highscores_view();
@@ -572,123 +467,28 @@ static void action_btn_cb(lv_event_t *e)
     show_idle_state();
 }
 
-static void sync_chip_selection(lv_obj_t **chips, lv_obj_t **lbls, int count, int sel)
+static void on_dur(int i, void *u)
 {
-    uint32_t sel_txt = on_accent();
-    for (int i = 0; i < count; i++) {
-        bool s = (i == sel);
-        lv_obj_set_style_bg_color(chips[i], lv_color_hex(s ? s_accent : KIT_COLOR_SURFACE), 0);
-        lv_obj_set_style_text_color(lbls[i], lv_color_hex(s ? sel_txt : KIT_COLOR_TEXT), 0);
-    }
-}
-
-static void duration_cb(lv_event_t *e)
-{
-    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    (void)u;
     s_dur_idx = i;
-    sync_chip_selection(s_dur_chips, s_dur_lbls, 3, s_dur_idx);
     save_duration();
-    sfx_click();
 }
 
-static void inverte_cb(lv_event_t *e)
+static void on_inv(int i, void *u)
 {
-    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    (void)u;
     s_inverte_on = (i == 1);
-    sync_chip_selection(s_inv_chips, s_inv_lbls, 2, i);
     save_inverte();
     if (s_state == STATE_IDLE) sync_idle_record();
-    sfx_click();
 }
 
-static void tv_changed_cb(lv_event_t *e)
+static void on_page(int page, void *u)
 {
-    (void)e;
-    int act = 0;
-    lv_obj_t *t = lv_tileview_get_tile_active(s_tv);
-    for (int i = 0; i < PAGES; i++) if (s_tiles[i] == t) act = i;
-    for (int i = 0; i < PAGES; i++)
-        lv_obj_set_style_bg_color(s_dots[i],
-            lv_color_hex(i == act ? s_accent : KIT_COLOR_LINE), 0);
-    if (act == 3) sync_highscores_view();
+    (void)u;
+    if (page == 3) sync_highscores_view();
 }
 
 // --- construção da tela ---------------------------------------------------
-static void build_titlebar(void)
-{
-    lv_obj_t *chip = lv_obj_create(s_screen);
-    lv_obj_set_size(chip, B_CHIP, B_CHIP);
-    lv_obj_set_style_bg_color(chip, lv_color_hex(KIT_COLOR_SURFACE), 0);
-    lv_obj_set_style_border_width(chip, 0, 0);
-    lv_obj_set_style_radius(chip, 18, 0);
-    lv_obj_set_style_pad_all(chip, 0, 0);
-    lv_obj_remove_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(chip, 12);
-    lv_obj_add_event_cb(chip, back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_align(chip, LV_ALIGN_TOP_LEFT, B_PAD, 16);
-    lv_obj_center(add_label(chip, KIT_ICON_BACK, KIT_COLOR_TEXT, &kit_display_44, 0));
-
-    lv_obj_t *title = add_label(s_screen, "QUADRADO", KIT_COLOR_TEXT, &kit_mono_26, 3);
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, B_PAD + B_CHIP + 12, 30);
-
-    lv_obj_t *dots = plain_box(s_screen);
-    lv_obj_set_size(dots, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(dots, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(dots, 6, 0);
-    lv_obj_align(dots, LV_ALIGN_TOP_RIGHT, -B_PAD, 40);
-    for (int i = 0; i < PAGES; i++) {
-        lv_obj_t *d = lv_obj_create(dots);
-        lv_obj_remove_style_all(d);
-        lv_obj_set_size(d, 8, 8);
-        lv_obj_set_style_radius(d, 4, 0);
-        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
-        s_dots[i] = d;
-    }
-}
-
-// Chip grid genérico (2 por linha) — mesmo padrão do io.github.jcrvlh.telefonema.
-#define CHIP_H       84
-#define CHIP_PER_ROW 2
-
-static void build_chip_grid(lv_obj_t *parent, const char *const *labels, int count,
-                            lv_event_cb_t cb, lv_obj_t **out_chips, lv_obj_t **out_lbls)
-{
-    lv_obj_t *wrap = plain_box(parent);
-    lv_obj_set_size(wrap, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(wrap, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(wrap, 10, 0);
-
-    int idx = 0;
-    while (idx < count) {
-        lv_obj_t *row = plain_box(wrap);
-        lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_style_pad_column(row, 10, 0);
-
-        int in_row = (count - idx < CHIP_PER_ROW) ? (count - idx) : CHIP_PER_ROW;
-        for (int k = 0; k < in_row; k++, idx++) {
-            lv_obj_t *c = lv_obj_create(row);
-            lv_obj_set_height(c, CHIP_H);
-            lv_obj_set_flex_grow(c, 1);
-            lv_obj_set_style_bg_color(c, lv_color_hex(KIT_COLOR_SURFACE), 0);
-            lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(c, 0, 0);
-            lv_obj_set_style_radius(c, 18, 0);
-            lv_obj_set_style_pad_all(c, 0, 0);
-            lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_set_ext_click_area(c, 6);
-            lv_obj_add_event_cb(c, cb, LV_EVENT_CLICKED, (void *)(intptr_t)idx);
-
-            lv_obj_t *l = add_label(c, labels[idx], KIT_COLOR_TEXT, &kit_mono_20, 1);
-            lv_obj_center(l);
-
-            out_chips[idx] = c;
-            out_lbls[idx]  = l;
-        }
-    }
-}
 
 // Página 0 — AJUSTE: tempo da partida + Modo Inverte. Rola se não couber.
 static void build_page_setup(lv_obj_t *tile)
@@ -708,10 +508,10 @@ static void build_page_setup(lv_obj_t *tile)
     lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
 
     add_label(p, "TEMPO DA PARTIDA", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    build_chip_grid(p, DUR_LABELS, 3, duration_cb, s_dur_chips, s_dur_lbls);
+    kit_ui_chips(&s_dur, p, DUR_LABELS, 3, s_dur_idx, s_accent, on_dur, NULL);
 
     add_label(p, "MODO INVERTE", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    build_chip_grid(p, INV_LABELS, 2, inverte_cb, s_inv_chips, s_inv_lbls);
+    kit_ui_chips(&s_inv, p, INV_LABELS, 2, s_inverte_on ? 1 : 0, s_accent, on_inv, NULL);
 
     lv_obj_t *hint = add_label(p,
         "Com o Modo Inverte ligado, o alvo tambem pode virar a bola durante\n"
@@ -797,8 +597,8 @@ static void build_game_playing(lv_obj_t *tile)
 
 static void build_game_result(lv_obj_t *tile)
 {
-    // Precisa rolar: número grande + legenda + caixas de letra + redefinir
-    // podem passar da altura livre acima do botão fixo em telas pequenas.
+    // Precisa rolar: número grande + legenda + seletor de sigla podem passar
+    // da altura livre acima do botão fixo em telas pequenas.
     s_result_group = lv_obj_create(tile);
     lv_obj_remove_style_all(s_result_group);
     lv_obj_set_size(s_result_group, lv_pct(100), lv_pct(100));
@@ -819,64 +619,12 @@ static void build_game_result(lv_obj_t *tile)
     lv_obj_set_width(s_result_caption, B_CONTENT);
     lv_obj_set_style_text_align(s_result_caption, LV_TEXT_ALIGN_CENTER, 0);
 
-    s_letters_row = plain_box(s_result_group);
-    lv_obj_set_size(s_letters_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(s_letters_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(s_letters_row, 12, 0);
-    lv_obj_set_style_pad_top(s_letters_row, 4, 0);
-    for (int k = 0; k < 3; k++) {
-        lv_obj_t *box = lv_obj_create(s_letters_row);
-        lv_obj_set_size(box, 92, 96);
-        lv_obj_set_style_bg_color(box, lv_color_hex(KIT_COLOR_SURFACE), 0);
-        lv_obj_set_style_border_width(box, 0, 0);
-        lv_obj_set_style_radius(box, 16, 0);
-        lv_obj_set_style_pad_all(box, 0, 0);
-        // SCROLLABLE (mesmo sem conteúdo pra rolar) faz a caixa absorver o
-        // arraste em vez de repassar pro result_group (que rola vertical) —
-        // sem isso, arrastar numa caixa rolaria a tela inteira junto.
-        lv_obj_add_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(box, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(box, letter_cb, LV_EVENT_CLICKED, (void *)(intptr_t)k);
-        lv_obj_add_event_cb(box, letter_pressed_cb, LV_EVENT_PRESSED, (void *)(intptr_t)k);
-        lv_obj_add_event_cb(box, letter_released_cb, LV_EVENT_RELEASED, (void *)(intptr_t)k);
-        lv_obj_t *l = add_label(box, "A", KIT_COLOR_TEXT, &kit_display_72, 0);
-        lv_obj_center(l);
-        s_letter_box[k] = box;
-        s_letter_lbl[k] = l;
-    }
-
-    s_reset_btn = lv_obj_create(s_result_group);
-    lv_obj_set_size(s_reset_btn, LV_SIZE_CONTENT, 56);
-    lv_obj_set_style_pad_hor(s_reset_btn, 24, 0);
-    lv_obj_set_style_bg_color(s_reset_btn, lv_color_hex(KIT_COLOR_SURFACE), 0);
-    lv_obj_set_style_border_width(s_reset_btn, 0, 0);
-    lv_obj_set_style_radius(s_reset_btn, 28, 0);
-    lv_obj_remove_flag(s_reset_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_reset_btn, 10);
-    lv_obj_add_event_cb(s_reset_btn, reset_letters_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_center(add_label(s_reset_btn, "REDEFINIR", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2));
-}
-
-// Botão de ação — filho do tile (não de nenhum dos três grupos), fixo no
-// rodapé, fora do scroll. Compartilhado entre IDLE e RESULTADO (troca de
-// rótulo e ação conforme s_state); escondido durante o jogo.
-static void build_game_action_btn(lv_obj_t *tile)
-{
-    s_action_btn = lv_obj_create(tile);
-    lv_obj_set_size(s_action_btn, B_CONTENT, B_BTN_H);
-    lv_obj_set_style_radius(s_action_btn, B_BTN_H / 2, 0);
-    lv_obj_set_style_border_width(s_action_btn, 0, 0);
-    lv_obj_set_style_pad_all(s_action_btn, 0, 0);
-    lv_obj_set_style_bg_color(s_action_btn, lv_color_hex(s_accent), 0);
-    lv_obj_set_style_bg_opa(s_action_btn, LV_OPA_80, LV_STATE_PRESSED);
-    lv_obj_remove_flag(s_action_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_action_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_action_btn, 8);
-    lv_obj_align(s_action_btn, LV_ALIGN_BOTTOM_MID, 0, -B_BTN_MARGIN);
-    lv_obj_add_event_cb(s_action_btn, action_btn_cb, LV_EVENT_CLICKED, NULL);
-    s_action_btn_lbl = add_label(s_action_btn, "COMEÇAR", on_accent(), &kit_mono_26, 3);
-    lv_obj_center(s_action_btn_lbl);
+    // Seletor de sigla (kit_ui_sigla) — a roleta que nasceu aqui, agora no
+    // componente compartilhado. Congela o scroll nos dois eixos durante o
+    // arraste (este grupo na vertical, o tileview na horizontal).
+    kit_ui_sigla(&s_sigla, s_result_group, s_accent, NULL, NULL);
+    kit_ui_sigla_scroll_lock(&s_sigla, s_result_group, LV_DIR_VER);
+    kit_ui_sigla_scroll_lock(&s_sigla, s_shell.tv, LV_DIR_HOR);
 }
 
 static void build_page_game(lv_obj_t *tile)
@@ -885,7 +633,7 @@ static void build_page_game(lv_obj_t *tile)
     build_game_idle(tile);
     build_game_playing(tile);
     build_game_result(tile);
-    build_game_action_btn(tile);
+    kit_ui_action_button(&s_action, tile, s_accent, action_btn_cb);
 }
 
 // Página 2 — COMO JOGA: regra resumida + a homenagem.
@@ -899,27 +647,6 @@ static const char RULES[] =
     "cada caixa pra rolar as letras (ou toque pra avancar uma) e toque em\n"
     "SALVAR.\n\n"
     "Homenagem a Bola/Quadrado, 2017.";
-
-static void build_page_help(lv_obj_t *tile)
-{
-    lv_obj_set_style_pad_all(tile, 0, 0);
-    lv_obj_t *p = lv_obj_create(tile);
-    lv_obj_remove_style_all(p);
-    lv_obj_set_size(p, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_pad_all(p, B_PAD, 0);
-    lv_obj_set_style_pad_top(p, 16, 0);
-    lv_obj_set_style_pad_bottom(p, 32, 0);
-    lv_obj_set_style_pad_row(p, 14, 0);
-    lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(p, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_scroll_dir(p, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
-
-    add_label(p, "COMO JOGA", KIT_COLOR_TEXT, &kit_mono_26, 3);
-    lv_obj_t *body = add_label(p, RULES, KIT_COLOR_TEXT, &kit_sans_28, 0);
-    lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(body, B_CONTENT);
-}
 
 // Página 3 — HIGHSCORES: top-5 do modo normal + top-5 do Modo Inverte.
 static void build_hs_section(lv_obj_t *parent, const char *title,
@@ -965,52 +692,33 @@ static void build_page_highscores(lv_obj_t *tile)
     build_hs_section(p, "MODO INVERTE", s_hsi_left, s_hsi_right);
 }
 
-static void build_tileview(void)
-{
-    s_tv = lv_tileview_create(s_screen);
-    lv_obj_set_size(s_tv, KIT_DISPLAY_WIDTH, B_PAGE_H);
-    lv_obj_set_pos(s_tv, 0, B_TITLEBAR);
-    lv_obj_set_style_bg_opa(s_tv, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_tv, 0, 0);
-    lv_obj_set_scrollbar_mode(s_tv, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(s_tv, tv_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    s_tiles[0] = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_HOR);
-    s_tiles[1] = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_HOR);
-    s_tiles[2] = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_HOR);
-    s_tiles[3] = lv_tileview_add_tile(s_tv, 3, 0, LV_DIR_HOR);
-    build_page_setup(s_tiles[0]);
-    build_page_game(s_tiles[1]);
-    build_page_help(s_tiles[2]);
-    build_page_highscores(s_tiles[3]);
-}
-
 // --- ciclo de vida ---------------------------------------------------------
 KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 {
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
     s_api = ctx->api;
+    kit_ui_bind(s_api);
     load_prefs();
 
     s_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_screen, lv_color_hex(KIT_COLOR_BG), 0);
     lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    build_titlebar();
-    build_tileview();
+    kit_ui_shell_begin(&s_shell, s_screen, "QUADRADO", s_accent, PAGES);
+    kit_ui_shell_tiles(&s_shell, on_page, NULL);
+    build_page_setup(s_shell.tiles[0]);
+    build_page_game(s_shell.tiles[1]);
+    kit_ui_help_page(s_shell.tiles[2], "COMO JOGA", RULES);
+    build_page_highscores(s_shell.tiles[3]);
 
-    sync_chip_selection(s_dur_chips, s_dur_lbls, 3, s_dur_idx);
-    sync_chip_selection(s_inv_chips, s_inv_lbls, 2, s_inverte_on ? 1 : 0);
     sync_highscores_view();
 
-    // Callback de toque bruto — só usado pelo arraste nas caixas de letra
-    // (on_touch ignora tudo enquanto s_drag_box < 0, ou seja, fora do
-    // editor de sigla). Ver kit_input_api_t: um único callback por Tool.
+    // Callback de toque bruto — só usado pela roleta do seletor de sigla.
+    // Ver kit_input_api_t: um único callback por Tool.
     if (s_api->input) s_api->input->register_callback(on_touch, NULL);
 
-    lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_OFF);   // abre no JOGO
+    kit_ui_shell_open(&s_shell, 1);   // abre no JOGO
     show_idle_state();
-    tv_changed_cb(NULL);
 
     lv_screen_load(s_screen);
     return KIT_OK;
@@ -1021,23 +729,21 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     stop_round_timer();
     if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
-    s_tv = NULL;
-    for (int i = 0; i < PAGES; i++) { s_tiles[i] = NULL; s_dots[i] = NULL; }
-    s_dur_chips[0] = s_dur_chips[1] = s_dur_chips[2] = NULL;
-    s_dur_lbls[0]  = s_dur_lbls[1]  = s_dur_lbls[2]  = NULL;
-    s_inv_chips[0] = s_inv_chips[1] = NULL;
-    s_inv_lbls[0]  = s_inv_lbls[1]  = NULL;
+
+    s_shell  = (kit_ui_shell_t){0};
+    s_dur    = (kit_ui_chips_t){0};
+    s_inv    = (kit_ui_chips_t){0};
+    s_action = (kit_ui_action_t){0};
+    s_sigla  = (kit_ui_sigla_t){0};
+
     s_idle_group = s_idle_record_lbl = NULL;
     s_play_group = s_score_lbl = s_time_lbl = s_record_lbl = s_stage = s_target_badge = NULL;
     s_zone[0] = s_zone[1] = s_shape[0] = s_shape[1] = NULL;
     s_result_group = s_result_score = s_result_caption = NULL;
-    s_letters_row = s_reset_btn = s_action_btn = s_action_btn_lbl = NULL;
-    for (int k = 0; k < 3; k++) { s_letter_box[k] = NULL; s_letter_lbl[k] = NULL; }
     for (int i = 0; i < HS_COUNT; i++) {
         s_hsn_left[i] = s_hsn_right[i] = NULL;
         s_hsi_left[i] = s_hsi_right[i] = NULL;
     }
-    s_drag_box = -1;
     s_api = NULL;
 }
 
