@@ -10,8 +10,10 @@ FORA ainda tem uma última chance: adivinhar a palavra entre 4 opções.
 ## Como jogar
 
 1. **Ajustes** — na tela inicial (PALCO), deslize para a esquerda até AJUSTES:
-   número de jogadores (3–12), nomes de 3 letras (opcional — toque no número,
-   depois no topo/base de cada letra), rodadas (1 ou 2) e assuntos (ou `MIX`).
+   número de jogadores (3–12), siglas de 3 letras (opcional — escolha o jogador
+   no seletor e edite a sigla dele: toque numa caixa avança a letra, arraste
+   pra cima/baixo gira como roleta, `APAGAR` volta pro "JOGADOR N"), rodadas
+   (1 ou 2) e assuntos (ou `MIX`).
    Deslize de volta e toque em **COMEÇAR**.
 2. **Distribuição** — o KIT passa de mão em mão; cada jogador revela sua palavra
    em segredo e oculta antes de passar adiante.
