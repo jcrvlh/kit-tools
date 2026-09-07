@@ -70,7 +70,9 @@ static const int32_t DURATIONS[3] = { 15, 30, 60 };
 static const char *const DUR_LABELS[3] = { "15S", "30S", "60S" };
 static const char *const INV_LABELS[2] = { "DESLIGADO", "LIGADO" };
 
-typedef enum { STATE_IDLE, STATE_PLAYING, STATE_RESULT } ui_state_t;
+// ALERT: aviso de fim de rodada (TEMPO / PERDEU) que cobre a tela ANTES do
+// resultado — evita apertar SALVAR no susto e trava a navegação junto.
+typedef enum { STATE_IDLE, STATE_PLAYING, STATE_ALERT, STATE_RESULT } ui_state_t;
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -119,6 +121,9 @@ static lv_obj_t *s_stage       = NULL;
 static lv_obj_t *s_target_badge = NULL;    // ícone do alvo atual (só com Modo Inverte ligado)
 static lv_obj_t *s_zone[2]     = { NULL, NULL };   // alvo de toque = metade inteira
 static lv_obj_t *s_shape[2]    = { NULL, NULL };   // forma dentro de cada metade
+
+static lv_obj_t *s_alert_group = NULL;      // overlay TEMPO / PERDEU
+static lv_obj_t *s_alert_lbl   = NULL;
 
 static lv_obj_t *s_result_group   = NULL;
 static lv_obj_t *s_result_score   = NULL;
@@ -300,15 +305,19 @@ static void sync_target_badge(void)
     lv_label_set_text(s_target_badge, s_target_is_square ? KIT_ICON_SQUARE : KIT_ICON_CIRCLE);
 }
 
+// Enquanto a rodada está em curso (jogando, aviso de fim, ou digitando a
+// sigla), o swipe entre as páginas fica travado — igual ao Fora.
 static void show_idle_state(void)
 {
     s_state = STATE_IDLE;
     sync_idle_record();
     lv_obj_remove_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_alert_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
     kit_ui_action_set(&s_action, "COMEÇAR");
     kit_ui_action_show(&s_action, true);
+    kit_ui_shell_lock(&s_shell, false);
 }
 
 static void show_play_state(void)
@@ -316,8 +325,24 @@ static void show_play_state(void)
     s_state = STATE_PLAYING;
     lv_obj_add_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_alert_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
     kit_ui_action_show(&s_action, false);
+    kit_ui_shell_lock(&s_shell, true);
+}
+
+// Overlay de fim de rodada: cobre a tela com TEMPO / PERDEU e um "toque pra
+// continuar". Só depois do toque é que aparece o resultado (e a sigla). É
+// candidato a virar kit_ui_overlay (v2 da galeria).
+static void enter_alert(const char *big)
+{
+    s_state = STATE_ALERT;
+    lv_label_set_text(s_alert_lbl, big);
+    lv_obj_add_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_alert_group, LV_OBJ_FLAG_HIDDEN);
+    kit_ui_action_show(&s_action, false);   // toca no overlay pra seguir, não num botão
 }
 
 static void show_result_state(void)
@@ -325,6 +350,7 @@ static void show_result_state(void)
     s_state = STATE_RESULT;
     lv_obj_add_flag(s_idle_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_play_group, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_alert_group, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_result_group, LV_OBJ_FLAG_HIDDEN);
     kit_ui_action_show(&s_action, true);
 }
@@ -386,7 +412,7 @@ static void round_tick_cb(lv_timer_t *t)
         lv_label_set_text_fmt(s_time_lbl, "%dS", s_time_left);
         stop_round_timer();
         sfx_timeup();
-        enter_result();
+        enter_alert("TEMPO");
         return;
     }
     lv_label_set_text_fmt(s_time_lbl, "%dS", s_time_left);
@@ -423,7 +449,7 @@ static void on_miss(void)
 {
     stop_round_timer();
     sfx_miss();
-    enter_result();
+    enter_alert("PERDEU");
 }
 
 // --- callbacks -----------------------------------------------------------
@@ -442,6 +468,15 @@ static void on_touch(const kit_input_event_t *ev, void *user_data)
 {
     (void)user_data;
     kit_ui_sigla_feed_touch(&s_sigla, ev);
+}
+
+// Toque em qualquer lugar do overlay de fim de rodada → vai pro resultado.
+static void alert_tap_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_state != STATE_ALERT) return;
+    sfx_click();
+    enter_result();
 }
 
 static void action_btn_cb(lv_event_t *e)
@@ -627,12 +662,42 @@ static void build_game_result(lv_obj_t *tile)
     kit_ui_sigla_scroll_lock(&s_sigla, s_shell.tv, LV_DIR_HOR);
 }
 
+// Overlay de fim de rodada — superfície vermelha cheia (a primitiva de
+// "erro/fim"), palavra grande + "TOQUE PARA CONTINUAR". Tocar em qualquer
+// ponto segue pro resultado.
+static void build_game_alert(lv_obj_t *tile)
+{
+    s_alert_group = lv_obj_create(tile);
+    lv_obj_remove_style_all(s_alert_group);
+    lv_obj_set_size(s_alert_group, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(s_alert_group, lv_color_hex(KIT_COLOR_RED), 0);
+    lv_obj_set_style_bg_opa(s_alert_group, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(s_alert_group, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_alert_group, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_alert_group, 0);
+    lv_obj_add_event_cb(s_alert_group, alert_tap_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(s_alert_group, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *col = plain_box(s_alert_group);
+    lv_obj_set_size(col, B_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(col, 12, 0);
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, 0);
+
+    s_alert_lbl = add_label(col, "TEMPO", KIT_COLOR_ON_COLOR, &kit_display_72, 0);
+    lv_obj_t *hint = add_label(col, "TOQUE PARA CONTINUAR", KIT_COLOR_ON_COLOR, &kit_mono_20, 2);
+    lv_obj_set_width(hint, B_CONTENT);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+}
+
 static void build_page_game(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
     build_game_idle(tile);
     build_game_playing(tile);
     build_game_result(tile);
+    build_game_alert(tile);
     kit_ui_action_button(&s_action, tile, s_accent, action_btn_cb);
 }
 
@@ -739,6 +804,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_idle_group = s_idle_record_lbl = NULL;
     s_play_group = s_score_lbl = s_time_lbl = s_record_lbl = s_stage = s_target_badge = NULL;
     s_zone[0] = s_zone[1] = s_shape[0] = s_shape[1] = NULL;
+    s_alert_group = s_alert_lbl = NULL;
     s_result_group = s_result_score = s_result_caption = NULL;
     for (int i = 0; i < HS_COUNT; i++) {
         s_hsn_left[i] = s_hsn_right[i] = NULL;
