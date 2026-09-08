@@ -48,6 +48,7 @@
 #define C_PAGE_H      (C_SCR_H - C_TITLEBAR)           /* 360 */
 #define C_STAGE_H     (C_PAGE_H - (C_BTN_H + 2 * C_BTN_MARGIN))  /* 248 */
 #define C_HALF_W      (C_SCR_W / 2)                    /* 184 */
+#define DIV_TOP       96   /* onde a linha da DUPLA começa (abaixo do texto do topo) */
 
 #define PAGES         4   /* AJUSTE · JOGO · COMO JOGA · MELHORES */
 
@@ -302,6 +303,8 @@ static void go_idle(void)
     lv_label_set_text(s_sub, "3 RODADAS / TOQUE EM COME\xC3\x87""AR");
     lv_obj_set_style_text_color(s_sub, lv_color_hex(KIT_COLOR_TEXT), 0);
 
+    lv_obj_set_style_text_font(s_extra, &kit_mono_16, 0);
+    lv_obj_set_style_text_color(s_extra, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
     if (s_hs[0].score < HS_EMPTY)
         lv_label_set_text_fmt(s_extra, "MELHOR: %s %d%%", s_hs[0].initials, (int)s_hs[0].score);
     else
@@ -325,11 +328,12 @@ static void go_show(void)
     s_target_ms = (uint32_t)s_target_s * 1000u;
     s_wait_l = s_wait_r = -1;
 
-    set_hero_font(&kit_display_120);
+    /* display_72 (não a 120) porque o alvo leva a unidade "S" junto */
+    set_hero_font(&kit_display_72);
     lv_label_set_text_fmt(s_meta, "RODADA %d/%d", s_round + 1, ROUNDS);
-    lv_label_set_text_fmt(s_hero, "%d", s_target_s);
+    lv_label_set_text_fmt(s_hero, "%d S", s_target_s);
     lv_obj_set_style_text_color(s_hero, lv_color_hex(KIT_COLOR_TEXT), 0);
-    lv_label_set_text(s_sub, "SEGUNDOS / TOQUE EM APAGAR");
+    lv_label_set_text(s_sub, "TOQUE EM APAGAR");
     lv_obj_set_style_text_color(s_sub, lv_color_hex(KIT_COLOR_TEXT), 0);
     lv_label_set_text(s_extra, "");
 
@@ -360,8 +364,10 @@ static void go_dark(void)
     lv_obj_set_style_text_color(s_sub, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
     lv_label_set_text(s_extra, "");
 
-    if (s_j1) lv_obj_set_style_text_color(s_j1, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
-    if (s_j2) lv_obj_set_style_text_color(s_j2, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+    if (s_j1) { lv_label_set_text(s_j1, "J1");
+                lv_obj_set_style_text_color(s_j1, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0); }
+    if (s_j2) { lv_label_set_text(s_j2, "J2");
+                lv_obj_set_style_text_color(s_j2, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0); }
 
     if (s_mode == MODE_SOLO) {
         show(s_tap_full, true);
@@ -406,6 +412,8 @@ static void go_reveal(void)
             lv_color_hex(iabs(pct) <= 5 ? s_accent : KIT_COLOR_TEXT), 0);
 
         fmt_secs(a, sizeof a, w);
+        lv_obj_set_style_text_font(s_extra, &kit_mono_16, 0);
+        lv_obj_set_style_text_color(s_extra, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
         lv_label_set_text_fmt(s_extra, "VOC\xC3\x8A: %s S  /  %d%% %s",
                               a, iabs(pct), pct < 0 ? "CEDO" : "TARDE");
     } else {
@@ -428,7 +436,10 @@ static void go_reveal(void)
         lv_obj_set_style_text_color(s_sub,
             lv_color_hex(al == ar ? KIT_COLOR_TEXT : s_accent), 0);
 
-        lv_label_set_text_fmt(s_extra, "J1 %+d%%   J2 %+d%%", pctl, pctr);
+        /* os dois erros são a informação da rodada — legíveis, não em cinza */
+        lv_obj_set_style_text_font(s_extra, &kit_mono_20, 0);
+        lv_obj_set_style_text_color(s_extra, lv_color_hex(KIT_COLOR_TEXT), 0);
+        lv_label_set_text_fmt(s_extra, "J1  %+d%%      J2  %+d%%", pctl, pctr);
     }
 
     kit_ui_action_set(&s_action, last ? "RESULTADO" : "PR\xC3\x93XIMA");
@@ -457,7 +468,7 @@ static void go_summary(void)
             : avg_sig < 0 ? "VOC\xC3\x8A CORTA O TEMPO"
                           : "VOC\xC3\x8A ESTICA O TEMPO");
 
-        lv_label_set_text_fmt(s_sum_extra, "ERRO M\xC3\x89""DIO %d%%   /   %+d  %+d  %+d",
+        lv_label_set_text_fmt(s_sum_extra, "ERRO M\xC3\x89""DIO %d%%\nRODADAS  %+d  %+d  %+d",
                               avg_abs, s_serr[0], s_serr[1], s_serr[2]);
 
         s_pending_rank = hs_rank_of(avg_abs);
@@ -516,9 +527,13 @@ static void dark_tap(bool left)
     if (left) {
         if (s_wait_l >= 0) return;
         s_wait_l = (int32_t)el;
+        if (s_j1) { lv_label_set_text(s_j1, KIT_ICON_CHECK);
+                    lv_obj_set_style_text_color(s_j1, lv_color_hex(s_accent), 0); }
     } else {
         if (s_wait_r >= 0) return;
         s_wait_r = (int32_t)el;
+        if (s_j2) { lv_label_set_text(s_j2, KIT_ICON_CHECK);
+                    lv_obj_set_style_text_color(s_j2, lv_color_hex(s_accent), 0); }
     }
     beep(1500, 25);
     if (s_wait_l >= 0 && s_wait_r >= 0) go_reveal();
@@ -660,10 +675,11 @@ static void build_play(lv_obj_t *tile)
     lv_obj_set_width(s_extra, C_CONTENT);
     lv_obj_set_style_text_align(s_extra, LV_TEXT_ALIGN_CENTER, 0);
 
-    /* linha divisória do modo DUPLA — verde, no centro, NÃO apaga */
+    /* linha divisória do modo DUPLA — verde, NÃO apaga. Começa abaixo do
+       texto do topo ("ALVO .. S" / "TOQUE NO SEU LADO") pra não cortá-lo. */
     s_divider = plain_box(s_stage);
-    lv_obj_set_size(s_divider, 2, C_STAGE_H);
-    lv_obj_set_pos(s_divider, C_HALF_W - 1, 0);
+    lv_obj_set_size(s_divider, 2, C_STAGE_H - DIV_TOP);
+    lv_obj_set_pos(s_divider, C_HALF_W - 1, DIV_TOP);
     lv_obj_set_style_bg_color(s_divider, lv_color_hex(s_accent), 0);
     lv_obj_set_style_bg_opa(s_divider, LV_OPA_COVER, 0);
     lv_obj_add_flag(s_divider, LV_OBJ_FLAG_HIDDEN);
@@ -730,22 +746,15 @@ static void build_page_game(lv_obj_t *tile)
 }
 
 static const char RULES[] =
-    "O Compasso mede o qu\xC3\xA3o certo voc\xC3\xAA sente o tempo passar.\n\n"
-    "1. A cada rodada aparece um alvo em segundos (a 1\xC2\xAA sempre curta, at\xC3\xA9 "
-    "20 s; as outras v\xC3\xA3o at\xC3\xA9 60).\n\n"
-    "2. Toque em APAGAR. A tela escurece — mas a meta continua \xC3\xA0 vista, "
-    "n\xC3\xA3o \xC3\xA9 sobre decorar.\n\n"
-    "3. Toque de novo quando achar que o tempo passou. O Compasso mostra o "
-    "seu tempo real e o erro em porcentagem.\n\n"
-    "4. Depois de 3 rodadas, o veredito: quanto voc\xC3\xAA corta ou estica o "
-    "tempo, em m\xC3\xA9""dia. Consist\xC3\xAAncia importa mais que acerto — quem "
-    "erra sempre o mesmo tanto s\xC3\xB3 compensa.\n\n"
-    "DUPLA (AJUSTE): melhor de 3, mesmo alvo pros dois. Na tela escura cada um "
-    "toca no seu lado (J1 \xC3\xA0 esquerda, J2 \xC3\xA0 direita); a linha verde do "
-    "meio n\xC3\xA3o apaga. Ponto pro mais perto, empate n\xC3\xA3o pontua.\n\n"
-    "SOLO: entrou no top-5 (menor erro m\xC3\xA9""dio)? Arraste pra cima ou pra "
-    "baixo em cada caixa pra girar a letra, ou toque pra avan\xC3\xA7""ar. "
-    "Toque em SALVAR.";
+    "1. Aparece um alvo em segundos. Toque em APAGAR.\n\n"
+    "2. Com a tela escura, toque quando achar que o tempo passou. O Compasso "
+    "mostra o seu erro em porcentagem.\n\n"
+    "3. Ap\xC3\xB3s 3 rodadas, o veredito do seu rel\xC3\xB3gio interno: quanto voc\xC3\xAA "
+    "corta ou estica o tempo.\n\n"
+    "DUPLA: melhor de 3. Cada um toca no seu lado (J1 / J2); a linha verde "
+    "n\xC3\xA3o apaga. Ponto pro mais perto.\n\n"
+    "SOLO: entrou no top-5? Arraste pra girar a letra da sigla e toque em "
+    "SALVAR.";
 
 static void build_melhores(lv_obj_t *tile)
 {

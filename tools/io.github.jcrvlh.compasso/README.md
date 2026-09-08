@@ -1,28 +1,29 @@
 # Compasso
 
 **Compasso** é um treino de percepção de tempo. A cada rodada aparece um
-alvo em segundos (sorteado entre 5 e 60), você memoriza, toca em **APAGAR**
-e a tela fica preta. Toque de novo quando achar que o tempo passou — o
-Compasso revela o seu tempo real e o erro em porcentagem. No fim de 3
-rodadas vem o veredito: quanto o seu "relógio interno" corta ou estica o
-tempo, sempre.
+alvo em segundos (a 1ª sempre curta, até 20 s; as outras até 60), você toca
+em **APAGAR** e a tela escurece — a meta continua à vista, não é sobre
+decorar. Toque de novo quando achar que o tempo passou — o Compasso revela
+o seu tempo real e o erro em porcentagem. No fim de 3 rodadas vem o
+veredito: quanto o seu "relógio interno" corta ou estica o tempo, sempre.
 
 ---
 
 ## Como Jogar
 
 1. Escolha o **modo** no AJUSTE (SOLO ou DUPLA) e volte pro JOGO.
-2. Memorize o alvo em segundos e toque em **APAGAR**.
-3. Com a tela preta, toque quando achar que o tempo acabou.
+2. Toque em **APAGAR**. A tela escurece.
+3. Toque quando achar que o tempo acabou.
 4. Veja o erro da rodada. Depois de 3 rodadas, o veredito do seu relógio
    interno — **consistência importa mais que acerto**: quem erra sempre o
    mesmo tanto só precisa compensar.
 
 ### DUPLA (melhor de 3)
 
-Mesmo alvo pros dois. Na tela preta cada um toca no **seu lado** — uma linha
-verde vertical divide os campos e **não apaga**. O primeiro toque trava
-aquele lado e espera o outro. Ponto pro mais perto; empate não pontua.
+Mesmo alvo pros dois. Na tela escura cada um toca no **seu lado** (**J1** à
+esquerda, **J2** à direita) — uma linha verde vertical divide os campos e
+**não apaga**. Ao tocar, aquele lado marca ✓ e espera o outro. Ponto pro
+mais perto; empate não pontua.
 
 ### MELHORES (só SOLO)
 
