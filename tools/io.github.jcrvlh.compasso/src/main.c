@@ -55,36 +55,43 @@
 #define MODE_SOLO     0
 #define MODE_DUPLA    1
 
-#define ROUNDS        3
+#define MAX_ROUNDS    5
+#define N_ROUND_OPTS  3          /* 1 · 3 · 5 */
 #define TGT_MIN       5
 #define TGT_MAX       60
+#define TGT_C_LO      10         /* centro do alvo na 1ª rodada */
+#define TGT_C_HI      55         /* centro do alvo na última rodada */
 
 #define HS_COUNT      5
-#define HS_EMPTY      9999   /* sentinela de slot vazio (menor erro % = melhor) */
+#define HS_TABLES     3          /* um top-5 por contagem de rodadas (1/3/5) */
+#define HS_EMPTY      9999       /* sentinela de slot vazio (menor erro % = melhor) */
 
 #define K_MODE        "cmp_mode"
+#define K_ROUNDS      "cmp_rnds"
 #define K_LAST        "cmp_last"
-#define K_HS_SCORE    "cmp_hs"   /* + índice 0..4 */
-#define K_HS_INIT     "cmp_hi"   /* + índice 0..4 */
 
 typedef enum { ST_IDLE, ST_SHOW, ST_DARK, ST_REVEAL, ST_SUMMARY } st_t;
 
-static const char *const MODE_LABELS[2] = { "SOLO", "DUPLA" };
+static const char *const MODE_LABELS[2]  = { "SOLO", "DUPLA" };
+static const int         ROUND_OPTS[N_ROUND_OPTS]    = { 1, 3, 5 };
+static const char *const ROUND_LABELS[N_ROUND_OPTS]  = { "1", "3", "5" };
 
 /* --- estado --------------------------------------------------------- */
 static const kit_api_table_t *s_api = NULL;
 static uint32_t s_accent = KIT_COLOR_GREEN;
 
-static st_t s_state = ST_IDLE;
-static int  s_mode  = MODE_SOLO;
+static st_t s_state    = ST_IDLE;
+static int  s_mode     = MODE_SOLO;
+static int  s_rounds_i = 1;              /* índice em ROUND_OPTS — default "3" */
+static int  s_rounds   = 3;              /* == ROUND_OPTS[s_rounds_i] */
 
-static int      s_round      = 0;        /* 0..ROUNDS-1 */
+static int      s_round      = 0;        /* 0..s_rounds-1 */
 static int      s_target_s   = 0;
 static uint32_t s_target_ms  = 0;
 static uint64_t s_dark_start = 0;
 
 /* SOLO — erro relativo com sinal, por rodada (negativo = cedo, "pra menos") */
-static int  s_serr[ROUNDS];
+static int  s_serr[MAX_ROUNDS];
 
 /* DUPLA — ms de cada lado nesta rodada (-1 = ainda não tocou) + placar */
 static int32_t s_wait_l = -1, s_wait_r = -1;
@@ -93,14 +100,18 @@ static int     s_pts_l = 0, s_pts_r = 0;
 static int  s_pending_rank = -1;
 
 typedef struct { int32_t score; char initials[4]; } hs_t;
-static hs_t s_hs[HS_COUNT];
+static hs_t s_hs[HS_TABLES][HS_COUNT];   /* [0]=1 rodada · [1]=3 · [2]=5 */
 static char s_last_initials[4] = "AAA";
+
+/* qual top-5 vale pra uma contagem de rodadas */
+static int hs_table_of(int rounds) { return rounds == 1 ? 0 : rounds == 5 ? 2 : 1; }
 
 /* --- objetos LVGL (todos zerados em tool_destroy) ------------------- */
 static lv_obj_t      *s_screen = NULL;
 static kit_ui_shell_t s_shell;
 static kit_ui_action_t s_action;
 static kit_ui_chips_t  s_mode_chips;
+static kit_ui_chips_t  s_round_chips;
 
 /* JOGO — grupo "palco" (IDLE / SHOW / DARK / REVEAL) */
 static lv_obj_t *s_play  = NULL;
@@ -126,8 +137,8 @@ static lv_obj_t *s_sum_extra = NULL;
 static lv_obj_t *s_sum_cap  = NULL;
 static kit_ui_sigla_t s_sigla;
 
-/* MELHORES */
-static lv_obj_t *s_hs_left[HS_COUNT], *s_hs_right[HS_COUNT];
+/* MELHORES — 5 linhas por tabela (1 / 3 / 5 rodadas) */
+static lv_obj_t *s_hs_left[HS_TABLES][HS_COUNT], *s_hs_right[HS_TABLES][HS_COUNT];
 
 /* --- helpers ------------------------------------------------------- */
 static lv_obj_t *add_label(lv_obj_t *parent, const char *txt, uint32_t color,
@@ -176,13 +187,20 @@ static void fmt_secs(char *b, size_t n, uint32_t ms)
 }
 
 /* --- persistência ------------------------------------------------- */
+/* chaves: "cmp_s<R>_<i>" (score) e "cmp_i<R>_<i>" (sigla), R ∈ {1,3,5} */
+static void hs_key(char *buf, size_t n, char kind, int table, int slot)
+{
+    snprintf(buf, n, "cmp_%c%d_%d", kind, ROUND_OPTS[table], slot);
+}
+
 static void hs_defaults(void)
 {
-    for (int i = 0; i < HS_COUNT; i++) {
-        s_hs[i].score = HS_EMPTY;
-        s_hs[i].initials[0] = s_hs[i].initials[1] = s_hs[i].initials[2] = '-';
-        s_hs[i].initials[3] = 0;
-    }
+    for (int t = 0; t < HS_TABLES; t++)
+        for (int i = 0; i < HS_COUNT; i++) {
+            s_hs[t][i].score = HS_EMPTY;
+            s_hs[t][i].initials[0] = s_hs[t][i].initials[1] = s_hs[t][i].initials[2] = '-';
+            s_hs[t][i].initials[3] = 0;
+        }
 }
 
 static void load_prefs(void)
@@ -195,19 +213,23 @@ static void load_prefs(void)
     int32_t v;
     if (st->get_i32(K_MODE, &v) == KIT_OK && (v == MODE_SOLO || v == MODE_DUPLA))
         s_mode = (int)v;
+    if (st->get_i32(K_ROUNDS, &v) == KIT_OK)
+        for (int i = 0; i < N_ROUND_OPTS; i++)
+            if (ROUND_OPTS[i] == v) { s_rounds_i = i; s_rounds = (int)v; }
 
-    for (int i = 0; i < HS_COUNT; i++) {
-        snprintf(key, sizeof key, "%s%d", K_HS_SCORE, i);
-        if (st->get_i32(key, &v) == KIT_OK && v >= 0 && v < HS_EMPTY) s_hs[i].score = v;
-        snprintf(key, sizeof key, "%s%d", K_HS_INIT, i);
-        char buf[8];
-        if (st->get_str(key, buf, sizeof buf) == KIT_OK && buf[0]) {
-            int k = 0;
-            for (; k < 3 && buf[k]; k++) s_hs[i].initials[k] = buf[k];
-            for (; k < 3; k++) s_hs[i].initials[k] = '-';
-            s_hs[i].initials[3] = 0;
+    for (int t = 0; t < HS_TABLES; t++)
+        for (int i = 0; i < HS_COUNT; i++) {
+            hs_key(key, sizeof key, 's', t, i);
+            if (st->get_i32(key, &v) == KIT_OK && v >= 0 && v < HS_EMPTY) s_hs[t][i].score = v;
+            hs_key(key, sizeof key, 'i', t, i);
+            char buf[8];
+            if (st->get_str(key, buf, sizeof buf) == KIT_OK && buf[0]) {
+                int k = 0;
+                for (; k < 3 && buf[k]; k++) s_hs[t][i].initials[k] = buf[k];
+                for (; k < 3; k++) s_hs[t][i].initials[k] = '-';
+                s_hs[t][i].initials[3] = 0;
+            }
         }
-    }
 
     char lb[8];
     if (st->get_str(K_LAST, lb, sizeof lb) == KIT_OK) {
@@ -222,50 +244,55 @@ static void save_mode(void)
 {
     if (s_api && s_api->storage) s_api->storage->set_i32(K_MODE, s_mode);
 }
+static void save_rounds(void)
+{
+    if (s_api && s_api->storage) s_api->storage->set_i32(K_ROUNDS, s_rounds);
+}
 
-static void hs_save_slot(int i)
+static void hs_save_slot(int t, int i)
 {
     if (!s_api || !s_api->storage) return;
     char key[16];
-    snprintf(key, sizeof key, "%s%d", K_HS_SCORE, i);
-    s_api->storage->set_i32(key, s_hs[i].score);
-    snprintf(key, sizeof key, "%s%d", K_HS_INIT, i);
-    s_api->storage->set_str(key, s_hs[i].initials);
+    hs_key(key, sizeof key, 's', t, i);
+    s_api->storage->set_i32(key, s_hs[t][i].score);
+    hs_key(key, sizeof key, 'i', t, i);
+    s_api->storage->set_str(key, s_hs[t][i].initials);
 }
 
-/* posição em que `score` entraria no top-5 (menor = melhor), ou -1 */
-static int hs_rank_of(int score)
+/* posição em que `score` entraria no top-5 da tabela `t` (menor = melhor), ou -1 */
+static int hs_rank_of(int t, int score)
 {
-    for (int i = 0; i < HS_COUNT; i++) if (score < s_hs[i].score) return i;
+    for (int i = 0; i < HS_COUNT; i++) if (score < s_hs[t][i].score) return i;
     return -1;
 }
 
-static void hs_insert(int score, const char in[3])
+static void hs_insert(int t, int score, const char in[3])
 {
-    int idx = hs_rank_of(score);
+    int idx = hs_rank_of(t, score);
     if (idx < 0) return;
-    for (int i = HS_COUNT - 1; i > idx; i--) s_hs[i] = s_hs[i - 1];
-    s_hs[idx].score = score;
-    s_hs[idx].initials[0] = in[0];
-    s_hs[idx].initials[1] = in[1];
-    s_hs[idx].initials[2] = in[2];
-    s_hs[idx].initials[3] = 0;
-    for (int i = idx; i < HS_COUNT; i++) hs_save_slot(i);
+    for (int i = HS_COUNT - 1; i > idx; i--) s_hs[t][i] = s_hs[t][i - 1];
+    s_hs[t][idx].score = score;
+    s_hs[t][idx].initials[0] = in[0];
+    s_hs[t][idx].initials[1] = in[1];
+    s_hs[t][idx].initials[2] = in[2];
+    s_hs[t][idx].initials[3] = 0;
+    for (int i = idx; i < HS_COUNT; i++) hs_save_slot(t, i);
 }
 
 /* --- MELHORES ---------------------------------------------------- */
 static void sync_melhores(void)
 {
-    for (int i = 0; i < HS_COUNT; i++) {
-        bool set = s_hs[i].score < HS_EMPTY;
-        uint32_t col = set ? KIT_COLOR_TEXT : KIT_COLOR_TEXT_MUTED;
-        uint32_t rcol = (i == 0 && set) ? s_accent : col;
-        lv_label_set_text_fmt(s_hs_left[i], "%d  %s", i + 1, s_hs[i].initials);
-        lv_obj_set_style_text_color(s_hs_left[i], lv_color_hex(col), 0);
-        if (set) lv_label_set_text_fmt(s_hs_right[i], "%d%%", (int)s_hs[i].score);
-        else     lv_label_set_text(s_hs_right[i], "--");
-        lv_obj_set_style_text_color(s_hs_right[i], lv_color_hex(rcol), 0);
-    }
+    for (int t = 0; t < HS_TABLES; t++)
+        for (int i = 0; i < HS_COUNT; i++) {
+            bool set = s_hs[t][i].score < HS_EMPTY;
+            uint32_t col = set ? KIT_COLOR_TEXT : KIT_COLOR_TEXT_MUTED;
+            uint32_t rcol = (i == 0 && set) ? s_accent : col;
+            lv_label_set_text_fmt(s_hs_left[t][i], "%d  %s", i + 1, s_hs[t][i].initials);
+            lv_obj_set_style_text_color(s_hs_left[t][i], lv_color_hex(col), 0);
+            if (set) lv_label_set_text_fmt(s_hs_right[t][i], "%d%%", (int)s_hs[t][i].score);
+            else     lv_label_set_text(s_hs_right[t][i], "--");
+            lv_obj_set_style_text_color(s_hs_right[t][i], lv_color_hex(rcol), 0);
+        }
 }
 
 /* --- palco: helpers de render --------------------------------------- */
@@ -300,15 +327,20 @@ static void go_idle(void)
     lv_label_set_text(s_meta, "MODO");
     lv_label_set_text(s_hero, MODE_LABELS[s_mode]);
     lv_obj_set_style_text_color(s_hero, lv_color_hex(KIT_COLOR_TEXT), 0);
-    lv_label_set_text(s_sub, "3 RODADAS / TOQUE EM COME\xC3\x87""AR");
+    lv_label_set_text_fmt(s_sub, "%d RODADA%s / TOQUE EM COME\xC3\x87""AR",
+                          s_rounds, s_rounds > 1 ? "S" : "");
     lv_obj_set_style_text_color(s_sub, lv_color_hex(KIT_COLOR_TEXT), 0);
 
     lv_obj_set_style_text_font(s_extra, &kit_mono_16, 0);
     lv_obj_set_style_text_color(s_extra, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
-    if (s_hs[0].score < HS_EMPTY)
-        lv_label_set_text_fmt(s_extra, "MELHOR: %s %d%%", s_hs[0].initials, (int)s_hs[0].score);
-    else
-        lv_label_set_text(s_extra, "SEM RECORDE AINDA");
+    {
+        const hs_t *top = &s_hs[hs_table_of(s_rounds)][0];
+        if (top->score < HS_EMPTY)
+            lv_label_set_text_fmt(s_extra, "MELHOR (%dR): %s %d%%",
+                                  s_rounds, top->initials, (int)top->score);
+        else
+            lv_label_set_text(s_extra, "SEM RECORDE AINDA");
+    }
 
     kit_ui_action_set(&s_action, "COME\xC3\x87""AR");
     kit_ui_action_show(&s_action, true);
@@ -323,14 +355,21 @@ static void go_show(void)
     hide_dark_layers();
     stage_center();
 
-    /* 1ª rodada sempre curta — um número que dá pra "sentir" de cara */
-    s_target_s  = (s_round == 0) ? rnd(TGT_MIN, 20) : rnd(TGT_MIN, TGT_MAX);
+    /* o alvo sobe ao longo da partida: centro de TGT_C_LO (1ª rodada) a
+       TGT_C_HI (última), com jitter de ±25% pra não ficar previsível */
+    int center = (s_rounds <= 1) ? TGT_C_LO
+               : TGT_C_LO + (TGT_C_HI - TGT_C_LO) * s_round / (s_rounds - 1);
+    int jit = center / 4;
+    int t = center + rnd(-jit, jit);
+    if (t < TGT_MIN) t = TGT_MIN;
+    if (t > TGT_MAX) t = TGT_MAX;
+    s_target_s  = t;
     s_target_ms = (uint32_t)s_target_s * 1000u;
     s_wait_l = s_wait_r = -1;
 
     /* display_72 (não a 120) porque o alvo leva a unidade "S" junto */
     set_hero_font(&kit_display_72);
-    lv_label_set_text_fmt(s_meta, "RODADA %d/%d", s_round + 1, ROUNDS);
+    lv_label_set_text_fmt(s_meta, "RODADA %d/%d", s_round + 1, s_rounds);
     lv_label_set_text_fmt(s_hero, "%d S", s_target_s);
     lv_obj_set_style_text_color(s_hero, lv_color_hex(KIT_COLOR_TEXT), 0);
     lv_label_set_text(s_sub, "TOQUE EM APAGAR");
@@ -392,8 +431,8 @@ static void go_reveal(void)
     sfx(KIT_SFX_UNLOCK);
 
     char a[32], b[48];
-    lv_label_set_text_fmt(s_meta, "RODADA %d/%d", s_round + 1, ROUNDS);
-    bool last = (s_round + 1 >= ROUNDS);
+    lv_label_set_text_fmt(s_meta, "RODADA %d/%d", s_round + 1, s_rounds);
+    bool last = (s_round + 1 >= s_rounds);
 
     if (s_mode == MODE_SOLO) {
         uint32_t w = (uint32_t)s_wait_l;                           /* ms */
@@ -455,10 +494,11 @@ static void go_summary(void)
 
     if (s_mode == MODE_SOLO) {
         int sa = 0, ss = 0;
-        for (int i = 0; i < ROUNDS; i++) { sa += iabs(s_serr[i]); ss += s_serr[i]; }
-        int avg_abs = sa / ROUNDS;
-        int avg_sig = ss / ROUNDS;
+        for (int i = 0; i < s_rounds; i++) { sa += iabs(s_serr[i]); ss += s_serr[i]; }
+        int avg_abs = sa / s_rounds;
+        int avg_sig = ss / s_rounds;
         bool certeiro = iabs(avg_sig) <= 3;
+        int tbl = hs_table_of(s_rounds);
 
         lv_label_set_text(s_sum_meta, "SEU REL\xC3\x93GIO");
         /* display_120 não tem '%'; a fonte 44 tem tudo e ainda lê como número-herói */
@@ -468,18 +508,22 @@ static void go_summary(void)
             : avg_sig < 0 ? "VOC\xC3\x8A CORTA O TEMPO"
                           : "VOC\xC3\x8A ESTICA O TEMPO");
 
-        lv_label_set_text_fmt(s_sum_extra, "ERRO M\xC3\x89""DIO %d%%\nRODADAS  %+d  %+d  %+d",
-                              avg_abs, s_serr[0], s_serr[1], s_serr[2]);
+        char rb[80];
+        int w = snprintf(rb, sizeof rb, "ERRO M\xC3\x89""DIO %d%%\nRODADAS ", avg_abs);
+        for (int i = 0; i < s_rounds && w < (int)sizeof rb - 1; i++)
+            w += snprintf(rb + w, sizeof rb - w, " %+d", s_serr[i]);
+        lv_label_set_text(s_sum_extra, rb);
 
-        s_pending_rank = hs_rank_of(avg_abs);
+        s_pending_rank = hs_rank_of(tbl, avg_abs);
         bool qual = s_pending_rank >= 0;
         kit_ui_sigla_show(&s_sigla, qual);
         if (qual) {
             lv_label_set_text(s_sum_cap, s_pending_rank == 0 ? "MELHOR REL\xC3\x93GIO!" : "ENTROU NO TOP 5!");
             kit_ui_sigla_set(&s_sigla, s_last_initials);
             kit_ui_action_set(&s_action, "SALVAR");
-        } else if (s_hs[0].score < HS_EMPTY) {
-            lv_label_set_text_fmt(s_sum_cap, "MELHOR: %s %d%%", s_hs[0].initials, (int)s_hs[0].score);
+        } else if (s_hs[tbl][0].score < HS_EMPTY) {
+            lv_label_set_text_fmt(s_sum_cap, "MELHOR (%dR): %s %d%%",
+                                  s_rounds, s_hs[tbl][0].initials, (int)s_hs[tbl][0].score);
             kit_ui_action_set(&s_action, "JOGAR DE NOVO");
         } else {
             lv_label_set_text(s_sum_cap, "");
@@ -495,7 +539,7 @@ static void go_summary(void)
         if (s_pts_l > s_pts_r)      lv_label_set_text(s_sum_sub, "J1 VENCEU");
         else if (s_pts_r > s_pts_l) lv_label_set_text(s_sum_sub, "J2 VENCEU");
         else                        lv_label_set_text(s_sum_sub, "EMPATE");
-        lv_label_set_text(s_sum_extra, "MELHOR DE 3");
+        lv_label_set_text_fmt(s_sum_extra, "MELHOR DE %d", s_rounds);
         lv_label_set_text(s_sum_cap, "");
         kit_ui_action_set(&s_action, "JOGAR DE NOVO");
     }
@@ -509,7 +553,7 @@ static void start_match(void)
 {
     s_round = 0;
     s_pts_l = s_pts_r = 0;
-    for (int i = 0; i < ROUNDS; i++) s_serr[i] = 0;
+    for (int i = 0; i < MAX_ROUNDS; i++) s_serr[i] = 0;
     go_show();
 }
 
@@ -554,16 +598,16 @@ static void action_cb(lv_event_t *e)
     case ST_REVEAL:
         sfx(KIT_SFX_CLICK);
         s_round++;
-        if (s_round < ROUNDS) go_show();
-        else                  go_summary();
+        if (s_round < s_rounds) go_show();
+        else                    go_summary();
         break;
     case ST_SUMMARY:
         if (s_mode == MODE_SOLO && s_pending_rank >= 0) {
             const char *sig = kit_ui_sigla_get(&s_sigla);
             int sa = 0;
-            for (int i = 0; i < ROUNDS; i++) sa += iabs(s_serr[i]);
+            for (int i = 0; i < s_rounds; i++) sa += iabs(s_serr[i]);
             char in[3] = { sig[0], sig[1], sig[2] };
-            hs_insert(sa / ROUNDS, in);
+            hs_insert(hs_table_of(s_rounds), sa / s_rounds, in);
             s_last_initials[0] = sig[0]; s_last_initials[1] = sig[1];
             s_last_initials[2] = sig[2]; s_last_initials[3] = 0;
             if (s_api && s_api->storage) s_api->storage->set_str(K_LAST, s_last_initials);
@@ -597,6 +641,16 @@ static void on_mode(int i, void *u)
     if (s_state == ST_IDLE) go_idle();
 }
 
+static void on_rounds(int i, void *u)
+{
+    (void)u;
+    if (i < 0 || i >= N_ROUND_OPTS) return;
+    s_rounds_i = i;
+    s_rounds   = ROUND_OPTS[i];
+    save_rounds();
+    if (s_state == ST_IDLE) go_idle();
+}
+
 static void on_page(int page, void *u)
 {
     (void)u;
@@ -623,11 +677,17 @@ static void build_ajuste(lv_obj_t *tile)
     add_label(p, "MODO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
     kit_ui_chips(&s_mode_chips, p, MODE_LABELS, 2, s_mode, s_accent, on_mode, NULL);
 
+    add_label(p, "RODADAS", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    kit_ui_chips(&s_round_chips, p, ROUND_LABELS, N_ROUND_OPTS, s_rounds_i,
+                 s_accent, on_rounds, NULL);
+
     lv_obj_t *hint = add_label(p,
-        "SOLO: 3 rodadas, veredito do seu rel\xC3\xB3gio interno e top-5 salvo no "
-        "aparelho.\n\n"
-        "DUPLA: melhor de 3, cada um toca no seu lado da tela preta. A linha "
-        "verde do meio n\xC3\xA3o apaga.",
+        "O alvo em segundos cresce a cada rodada: come\xC3\xA7""a curto e vai "
+        "subindo.\n\n"
+        "SOLO: veredito do seu rel\xC3\xB3gio interno e top-5 no aparelho (um por "
+        "contagem de rodadas).\n\n"
+        "DUPLA: cada um toca no seu lado da tela escura; a linha verde do meio "
+        "n\xC3\xA3o apaga.",
         KIT_COLOR_TEXT_MUTED, &kit_sans_22, 0);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(hint, C_CONTENT);
@@ -725,6 +785,7 @@ static void build_summary(lv_obj_t *tile)
     lv_obj_set_style_text_align(s_sum_sub, LV_TEXT_ALIGN_CENTER, 0);
 
     s_sum_extra = add_label(s_sum, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+    lv_label_set_long_mode(s_sum_extra, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_sum_extra, C_CONTENT);
     lv_obj_set_style_text_align(s_sum_extra, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -749,9 +810,10 @@ static const char RULES[] =
     "1. Aparece um alvo em segundos. Toque em APAGAR.\n\n"
     "2. Com a tela escura, toque quando achar que o tempo passou. O Compasso "
     "mostra o seu erro em porcentagem.\n\n"
-    "3. Ap\xC3\xB3s 3 rodadas, o veredito do seu rel\xC3\xB3gio interno: quanto voc\xC3\xAA "
-    "corta ou estica o tempo.\n\n"
-    "DUPLA: melhor de 3. Cada um toca no seu lado (J1 / J2); a linha verde "
+    "3. No fim, o veredito do seu rel\xC3\xB3gio interno: quanto voc\xC3\xAA corta ou "
+    "estica o tempo. O alvo cresce a cada rodada.\n\n"
+    "AJUSTE: 1, 3 ou 5 rodadas. O top-5 \xC3\xA9 separado por contagem.\n\n"
+    "DUPLA: melhor de N. Cada um toca no seu lado (J1 / J2); a linha verde "
     "n\xC3\xA3o apaga. Ponto pro mais perto.\n\n"
     "SOLO: entrou no top-5? Arraste pra girar a letra da sigla e toque em "
     "SALVAR.";
@@ -775,21 +837,28 @@ static void build_melhores(lv_obj_t *tile)
     add_label(p, "MELHORES REL\xC3\x93GIOS", KIT_COLOR_TEXT, &kit_mono_26, 3);
     add_label(p, "SOLO / MENOR ERRO M\xC3\x89""DIO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
 
-    for (int i = 0; i < HS_COUNT; i++) {
-        lv_obj_t *row = lv_obj_create(p);
-        lv_obj_remove_style_all(row);
-        lv_obj_set_size(row, lv_pct(100), 52);
-        lv_obj_set_style_bg_color(row, lv_color_hex(KIT_COLOR_SURFACE), 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(row, 12, 0);
-        lv_obj_set_style_pad_left(row, 16, 0);
-        lv_obj_set_style_pad_right(row, 16, 0);
-        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    /* uma tabela por contagem de rodadas — um jogo de 1 rodada não compara
+       com um de 5 (o alvo cresce ao longo da partida) */
+    for (int t = 0; t < HS_TABLES; t++) {
+        add_label(p, ROUND_OPTS[t] == 1 ? "1 RODADA" :
+                     ROUND_OPTS[t] == 3 ? "3 RODADAS" : "5 RODADAS",
+                  KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+        for (int i = 0; i < HS_COUNT; i++) {
+            lv_obj_t *row = lv_obj_create(p);
+            lv_obj_remove_style_all(row);
+            lv_obj_set_size(row, lv_pct(100), 46);
+            lv_obj_set_style_bg_color(row, lv_color_hex(KIT_COLOR_SURFACE), 0);
+            lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(row, 12, 0);
+            lv_obj_set_style_pad_left(row, 16, 0);
+            lv_obj_set_style_pad_right(row, 16, 0);
+            lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-        s_hs_left[i]  = add_label(row, "1  ---", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
-        s_hs_right[i] = add_label(row, "--", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+            s_hs_left[t][i]  = add_label(row, "1  ---", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+            s_hs_right[t][i] = add_label(row, "--", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+        }
     }
 }
 
@@ -802,6 +871,8 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     s_state = ST_IDLE;
     s_mode  = MODE_SOLO;
+    s_rounds_i = 1;
+    s_rounds   = ROUND_OPTS[1];   /* 3 */
     s_round = 0;
     s_pts_l = s_pts_r = 0;
     s_wait_l = s_wait_r = -1;
@@ -836,16 +907,18 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
 
-    s_shell      = (kit_ui_shell_t){0};
-    s_action     = (kit_ui_action_t){0};
-    s_mode_chips = (kit_ui_chips_t){0};
-    s_sigla      = (kit_ui_sigla_t){0};
+    s_shell       = (kit_ui_shell_t){0};
+    s_action      = (kit_ui_action_t){0};
+    s_mode_chips  = (kit_ui_chips_t){0};
+    s_round_chips = (kit_ui_chips_t){0};
+    s_sigla       = (kit_ui_sigla_t){0};
 
     s_play = s_stage = s_col = NULL;
     s_meta = s_hero = s_sub = s_extra = NULL;
     s_divider = s_tap_full = s_tap_l = s_tap_r = s_j1 = s_j2 = NULL;
     s_sum = s_sum_meta = s_sum_hero = s_sum_sub = s_sum_extra = s_sum_cap = NULL;
-    for (int i = 0; i < HS_COUNT; i++) { s_hs_left[i] = NULL; s_hs_right[i] = NULL; }
+    for (int t = 0; t < HS_TABLES; t++)
+        for (int i = 0; i < HS_COUNT; i++) { s_hs_left[t][i] = NULL; s_hs_right[t][i] = NULL; }
     s_api = NULL;
 }
 
