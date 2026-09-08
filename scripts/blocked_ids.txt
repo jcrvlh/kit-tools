@@ -1,0 +1,11 @@
+# IDs banidos do catálogo — permanentemente.
+#
+# Uma Tool listada aqui:
+#   - faz `validate_tool.py` falhar se a pasta `tools/<id>/` reaparecer (bloqueia o PR);
+#   - é ignorada por `build_catalog.py` mesmo se a pasta existir;
+#   - entra no campo `revoked` do index.json, pra o device recusar/remover quando
+#     o suporte a revogação (ADR-0012) estiver no firmware.
+#
+# Um ID daqui não volta ao catálogo. Formato: um id por linha, `#` comenta.
+
+io.github.jcrvlh.hello

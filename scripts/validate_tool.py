@@ -27,6 +27,21 @@ ID_RE = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+)+$")
 RESERVED = ("com.kit.", "org.kit.")
 REQUIRED_FILES = ("manifest.json", "CMakeLists.txt", "icon.bin", "README.md")
 
+
+def _blocked_ids() -> set[str]:
+    path = ROOT / "scripts" / "blocked_ids.txt"
+    if not path.exists():
+        return set()
+    ids = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            ids.add(line)
+    return ids
+
+
+BLOCKED = _blocked_ids()
+
 try:
     from kit_cli.validator import validate_manifest_file  # type: ignore
 except Exception:  # pragma: no cover - fallback quando o kit-cli não está instalado
@@ -66,6 +81,11 @@ def validate_dir(tool_dir: Path, allow_reserved: bool, published: dict[str, int]
         errors.extend(f"{rel}/manifest.json: {e}" for e in verrs if not ok)
 
     tid = manifest.get("id", "")
+    if tid in BLOCKED or tool_dir.name in BLOCKED:
+        errors.append(
+            f"{rel}: id '{tid or tool_dir.name}' está banido do catálogo "
+            f"(scripts/blocked_ids.txt) e não pode voltar"
+        )
     if tid != tool_dir.name:
         errors.append(f"{rel}: id '{tid}' != nome da pasta '{tool_dir.name}'")
     if not ID_RE.match(tid):

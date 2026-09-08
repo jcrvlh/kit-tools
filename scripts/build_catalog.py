@@ -30,6 +30,19 @@ MIRRORED_FIELDS = (
 )
 
 
+def _blocked_ids() -> list[str]:
+    """IDs banidos do catálogo (scripts/blocked_ids.txt) — nunca entram no index."""
+    path = Path(__file__).resolve().parent / "blocked_ids.txt"
+    if not path.exists():
+        return []
+    ids = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line and line not in ids:
+            ids.append(line)
+    return ids
+
+
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -69,6 +82,7 @@ def _tool_entry(manifest: dict, dist: Path | None) -> dict:
 
 
 def build(tools_dir: Path, dist: Path | None) -> dict:
+    blocked = _blocked_ids()
     tools = []
     for manifest_path in sorted(tools_dir.glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -77,13 +91,16 @@ def build(tools_dir: Path, dist: Path | None) -> dict:
             raise SystemExit(
                 f"{manifest_path}: id '{tid}' != nome da pasta '{manifest_path.parent.name}'"
             )
+        if tid in blocked or manifest_path.parent.name in blocked:
+            print(f"ignorando Tool banida: {tid}", file=sys.stderr)
+            continue
         tools.append(_tool_entry(manifest, dist))
 
     return {
         "catalog_version": 1,
         "generated_at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "keys": [],           # preenchido pela pipeline de assinatura (ADR-0012)
-        "revoked": [],
+        "revoked": blocked,
         "tools": tools,
     }
 
