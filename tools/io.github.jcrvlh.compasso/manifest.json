@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.compasso",
+  "name": "Compasso",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.3.1",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Treino de percepção de tempo: a tela apaga e você toca quando achar que o alvo em segundos passou. Mostra seu erro em % e, no fim, quanto seu relógio interno corta ou estica o tempo. Modo dupla e top-5 no aparelho.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#45A05B",
+  "home_icon": "timer",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "storage", "random", "audio", "time"],
+  "api_level": 1,
+  "assets": []
+}
