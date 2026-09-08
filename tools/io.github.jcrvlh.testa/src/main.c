@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Testa — mini-jogo de mesa estilo "Heads Up!" para o KIT.
+ * @brief Testa — mini-jogo de mesa para o KIT.
  *
  * Uma pessoa segura o KIT na testa, tela virada pra roda. A roda ajuda, ela
  * adivinha. Inclina pra baixo = acertou; pra cima = passou (gesto do kit_imu,

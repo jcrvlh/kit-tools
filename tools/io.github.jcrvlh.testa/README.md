@@ -1,6 +1,6 @@
 # Testa
 
-Mini-jogo de mesa estilo *Heads Up!* para o KIT.
+Mini-jogo de mesa para o KIT.
 
 Uma pessoa segura o KIT encostado na testa, com a tela virada pra roda. A roda dá
 dicas — falando, cantando ou gesticulando, como combinarem — e a pessoa tenta
