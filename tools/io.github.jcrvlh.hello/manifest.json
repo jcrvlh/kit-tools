@@ -1,0 +1,23 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Tool de exemplo do catálogo: rola um D20 a cada toque, com bipe e estado persistido.",
+  "icon": "icon.bin",
+  "entry_point": "tool.elf",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "input",
+    "random",
+    "audio",
+    "storage"
+  ],
+  "api_level": 1,
+  "assets": []
+}
