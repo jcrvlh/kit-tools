@@ -40,6 +40,8 @@
 
 - `id` em domínio reverso, único no catálogo; `com.kit.*` / `org.kit.*` são
   reservados.
+- IDs listados em [`scripts/blocked_ids.txt`](scripts/blocked_ids.txt) estão
+  banidos permanentemente — a CI recusa o PR que os reintroduzir.
 - `version_code` inteiro, estritamente crescente entre versões.
 - Atualização = novo PR do mesmo autor com `version` e `version_code` maiores.
 - Ao contribuir, você concorda em licenciar a infraestrutura sob GPL-3.0; a Tool
