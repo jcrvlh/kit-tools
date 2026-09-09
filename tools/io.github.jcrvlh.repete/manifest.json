@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.repete",
+  "name": "Repete",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.3.1",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Jogo de memória: o KIT mostra uma sequência com as 3 formas — círculo, triângulo, quadrado — e você repete. Acertou, a sequência cresce. Modos Clássico, Velocidade e Inverso.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#45A05B",
+  "home_icon": "triangle",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "storage", "random", "audio"],
+  "api_level": 1,
+  "assets": []
+}
