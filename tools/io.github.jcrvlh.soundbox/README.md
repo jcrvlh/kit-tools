@@ -4,9 +4,9 @@
 cada **toque** toca um som, e um som novo **corta** o anterior — sem polifonia,
 no ritmo de uma soundbox de zoeira. Chacoalhar o KIT retoca o último pad.
 
-Os sons vêm do **cartão microSD**, organizados em **bancos**: cada subpasta de
-`/soundbox/` na raiz do cartão é um banco (um conjunto de até 9 sons). A Tool só
-lê o cartão — nunca escreve.
+A Soundbox já vem com o banco **Exemplo** (7 sons, embutido no `.kit`). Os seus
+bancos vêm do **cartão microSD**: cada subpasta de `/soundbox/` na raiz do cartão
+é um banco (um conjunto de até 9 sons). A Tool só lê — nunca escreve no cartão.
 
 ---
 
@@ -56,12 +56,16 @@ arquivo como rótulo.
   (BANCOS ◄─► PADS ◄─► ADICIONAR SONS), abre em PADS.
 - **Áudio**: `audio->play_sample()` com o caminho do `.wav` no cartão; retrigger
   ao tocar outro pad. Flash branco de 140 ms no pad tocado (o som pode ser baixo).
-- **Cartão**: `opendir`/`readdir`/`stat` varrem `/sdcard/soundbox/<banco>/`;
-  `banco.json` é lido com um parser mínimo embutido (o `.so` não tem cJSON).
-  Exige **runtime ≥ 0.8.0** (quando esses símbolos entraram na superfície das Tools).
+- **Bancos**: `opendir`/`readdir`/`stat` varrem `/sdcard/soundbox/<banco>/` (do
+  usuário) **e** `<data_path>/assets/` (o banco Exemplo, extraído do `.kit` pelo
+  instalador em `/sdcard/tools/io.github.jcrvlh.soundbox/assets/`). `banco.json`
+  é lido com um parser mínimo embutido (o `.so` não tem cJSON). Exige
+  **runtime ≥ 0.8.0** (quando esses símbolos entraram na superfície das Tools).
+- **Exemplo**: 7 sons do Pixabay (~350 KB no `.kit` — abaixo do teto de 768 KB do
+  Catálogo). Créditos na página ADICIONAR SONS e em `assets/CREDITOS.txt`.
 - **Entradas**: toque no pad (`LV_EVENT_SHORT_CLICKED`, para deslizar não tocar),
   chacoalhar (retoca o último) e o PWR físico.
-- **Persistência**: `storage` — `sb_bank` (índice do banco) e `sb_vol` (volume).
+- **Persistência**: `storage` — `sb_bank` (nome do banco escolhido) e `sb_vol` (volume).
 
 Nasceu built-in (componente `kit_soundbox` no firmware) e migrou para o catálogo
 com o runtime 0.8.0.

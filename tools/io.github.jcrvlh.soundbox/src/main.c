@@ -46,10 +46,13 @@
 #define SB_MAX_BANKS   12
 #define SB_MAX_PADS    9
 #define SB_DIR_LEN     40
+#define SB_BASE_LEN    96      /* caminho completo da pasta do banco */
 #define SB_NAME_LEN    28
 #define SB_FILE_LEN    64
 #define SB_LABEL_LEN   18
 #define SB_JSON_MAX    4096
+
+#define SB_EXAMPLE_DIR "Exemplo"   /* rótulo do banco embutido no .kit */
 
 #define K_BANK        "sb_bank"
 #define K_VOL         "sb_vol"
@@ -67,9 +70,11 @@ typedef struct {
 } sb_pad_t;
 
 typedef struct {
-    char     dir[SB_DIR_LEN];         /* nome da subpasta */
+    char     dir[SB_DIR_LEN];         /* nome curto (subpasta ou "Exemplo") — chave de persistência */
+    char     base[SB_BASE_LEN];       /* caminho absoluto da pasta com os .wav */
     char     name[SB_NAME_LEN];       /* nome de exibição */
     uint32_t color;                   /* cor do banco */
+    bool     builtin;                 /* veio do .kit (assets), não do /soundbox do usuário */
     int      npads;
     sb_pad_t pads[SB_MAX_PADS];
 } sb_bank_t;
@@ -211,6 +216,7 @@ static const char *j_obj_find(const char *p, const char *end, const char *key)
  * Estado
  * -------------------------------------------------------------------------- */
 static const kit_api_table_t *s_api = NULL;
+static char       s_assets[SB_BASE_LEN] = "";   /* <data_path>/assets — banco embutido */
 
 static uint32_t   s_accent   = KIT_COLOR_GREEN;
 static sb_bank_t  s_banks[SB_MAX_BANKS];
@@ -279,10 +285,10 @@ static bool pad_has_file(const sb_bank_t *b, const char *file)
     return false;
 }
 
-static bool file_exists(const char *dir, const char *file)
+static bool file_exists(const sb_bank_t *b, const char *file)
 {
-    char p[256];
-    snprintf(p, sizeof(p), SB_ROOT "/%s/%s", dir, file);
+    char p[SB_BASE_LEN + SB_FILE_LEN + 2];
+    snprintf(p, sizeof(p), "%s/%s", b->base, file);
     struct stat st;
     return stat(p, &st) == 0 && S_ISREG(st.st_mode);
 }
@@ -290,8 +296,8 @@ static bool file_exists(const char *dir, const char *file)
 /* Lê o banco.json (se houver) e preenche name/color/pads na ordem dele. */
 static void load_banco_json(sb_bank_t *b)
 {
-    char path[128];
-    snprintf(path, sizeof(path), SB_ROOT "/%s/banco.json", b->dir);
+    char path[SB_BASE_LEN + 16];
+    snprintf(path, sizeof(path), "%s/banco.json", b->base);
     FILE *f = fopen(path, "rb");
     if (!f) return;
 
@@ -334,7 +340,7 @@ static void load_banco_json(sb_bank_t *b)
             const char *a = j_obj_find(obj_start, obj_end, "arquivo");
             if (a && *a == '"') j_str(a, obj_end, arq, sizeof arq);
 
-            if (arq[0] && file_exists(b->dir, arq) && !pad_has_file(b, arq)) {
+            if (arq[0] && file_exists(b, arq) && !pad_has_file(b, arq)) {
                 sb_pad_t *pad = &b->pads[b->npads++];
                 sb_copy(pad->file, arq, sizeof pad->file);
 
@@ -367,9 +373,7 @@ static void load_bank(sb_bank_t *b)
 
     load_banco_json(b);
 
-    char dpath[SB_DIR_LEN + 24];
-    snprintf(dpath, sizeof(dpath), SB_ROOT "/%s", b->dir);
-    DIR *d = opendir(dpath);
+    DIR *d = opendir(b->base);
     if (!d) return;
 
     static char names[SB_MAX_PADS * 3][SB_FILE_LEN];
@@ -406,9 +410,22 @@ static void load_bank(sb_bank_t *b)
     }
 }
 
-static void scan_banks(void)
+/* Banco embutido no .kit: <data_path>/assets/, sempre o primeiro da lista. */
+static void scan_builtin_bank(void)
 {
-    s_nbanks = 0;
+    if (!s_assets[0]) return;
+    sb_bank_t *b = &s_banks[s_nbanks];
+    memset(b, 0, sizeof(*b));
+    sb_copy(b->dir, SB_EXAMPLE_DIR, sizeof b->dir);
+    sb_copy(b->base, s_assets, sizeof b->base);
+    b->builtin = true;
+    load_bank(b);
+    if (b->npads > 0) s_nbanks++;
+}
+
+/* Bancos do usuário: cada subpasta de /sdcard/soundbox/. */
+static void scan_user_banks(void)
+{
     DIR *d = opendir(SB_ROOT);
     if (!d) {
         printf("[Soundbox] sem %s (sem cartao ou sem a pasta)\n", SB_ROOT);
@@ -419,7 +436,7 @@ static void scan_banks(void)
         if (e->d_name[0] == '.') continue;
         char name[SB_DIR_LEN];
         sb_copy(name, e->d_name, sizeof name);
-        char p[SB_DIR_LEN + 24];
+        char p[SB_BASE_LEN];
         snprintf(p, sizeof(p), SB_ROOT "/%s", name);
         struct stat st;
         if (stat(p, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
@@ -427,11 +444,20 @@ static void scan_banks(void)
         sb_bank_t *b = &s_banks[s_nbanks];
         memset(b, 0, sizeof(*b));
         sb_copy(b->dir, name, sizeof b->dir);
+        sb_copy(b->base, p, sizeof b->base);
         load_bank(b);
         if (b->npads > 0) s_nbanks++;   /* banco vazio não entra na lista */
     }
     closedir(d);
-    printf("[Soundbox] %d banco(s) em %s\n", s_nbanks, SB_ROOT);
+}
+
+static void scan_banks(void)
+{
+    s_nbanks = 0;
+    scan_builtin_bank();
+    scan_user_banks();
+    printf("[Soundbox] %d banco(s) (%s embutido)\n",
+           s_nbanks, (s_nbanks && s_banks[0].builtin) ? "com" : "sem");
 }
 
 /* --------------------------------------------------------------------------
@@ -459,8 +485,8 @@ static void play_pad(int i)
     if (s_cur < 0 || i < 0 || i >= s_banks[s_cur].npads) return;
     const sb_bank_t *b = &s_banks[s_cur];
 
-    char path[256];
-    snprintf(path, sizeof(path), SB_ROOT "/%s/%s", b->dir, b->pads[i].file);
+    char path[SB_BASE_LEN + SB_FILE_LEN + 2];
+    snprintf(path, sizeof(path), "%s/%s", b->base, b->pads[i].file);
     if (s_api && s_api->audio && s_api->audio->play_sample) s_api->audio->play_sample(path);
     s_last_pad = i;
 
@@ -495,13 +521,27 @@ static void pad_cb(lv_event_t *e)
     play_pad((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+/* Persiste o banco pelo nome curto (índice muda quando muda o nº de bancos). */
+static void save_cur_bank(void)
+{
+    if (s_api && s_api->storage && s_cur >= 0 && s_cur < s_nbanks)
+        s_api->storage->set_str(K_BANK, s_banks[s_cur].dir);
+}
+
+static int find_bank(const char *dir)
+{
+    for (int i = 0; i < s_nbanks; i++)
+        if (strcasecmp(s_banks[i].dir, dir) == 0) return i;
+    return -1;
+}
+
 static void bank_pick_cb(lv_event_t *e)
 {
     int idx = (int)(intptr_t)lv_event_get_user_data(e);
     if (idx < 0 || idx >= s_nbanks) return;
     s_cur = idx;
     s_last_pad = -1;
-    if (s_api && s_api->storage) s_api->storage->set_i32(K_BANK, idx);
+    save_cur_bank();
     rebuild_grid();
     lv_tileview_set_tile_by_index(s_tv, 1, 0, LV_ANIM_ON);
 }
@@ -683,7 +723,7 @@ static void build_page_banks(lv_obj_t *tile)
 
     if (s_nbanks == 0) {
         lv_obj_t *m = add_label(p,
-            "Nenhum banco no cartao ainda.\n\n"
+            "Nenhum banco ainda.\n\n"
             "Deslize pro lado (ADICIONAR SONS) pra ver como por sons no KIT.",
             KIT_COLOR_TEXT, &kit_sans_22, 0);
         lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
@@ -715,9 +755,10 @@ static void build_page_banks(lv_obj_t *tile)
         lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
         lv_obj_set_width(nm, X_CONTENT - 40);
 
-        char sub[32];
-        snprintf(sub, sizeof(sub), "%d SOM%s", s_banks[i].npads,
-                 s_banks[i].npads == 1 ? "" : "S");
+        char sub[40];
+        snprintf(sub, sizeof(sub), "%d SOM%s%s", s_banks[i].npads,
+                 s_banks[i].npads == 1 ? "" : "S",
+                 s_banks[i].builtin ? " - DO APP" : "");
         add_label(chip, sub, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
     }
 }
@@ -726,6 +767,7 @@ static void build_page_banks(lv_obj_t *tile)
  * Página 2 (direita) — como adicionar sons + créditos dos exemplos
  * -------------------------------------------------------------------------- */
 static const char ADD_STEPS[] =
+    "A Soundbox ja vem com o banco EXEMPLO. Pra por os seus:\n\n"
     "1. Aponte a camera no codigo abaixo pra abrir o conversor.\n\n"
     "2. Solte seus audios la - MP3, WAV, o que tiver. De um nome e "
     "uma cor pra cada pad.\n\n"
@@ -736,13 +778,13 @@ static const char ADD_STEPS[] =
     "5. A pasta vai pra /soundbox na raiz do cartao. Cada pasta "
     "dentro de /soundbox e um banco aqui na Soundbox.";
 
-/* Sons do banco de exemplo — todos do Pixabay (pixabay.com). */
+/* Sons do banco EXEMPLO — todos do Pixabay (pixabay.com). */
 static const char CREDITS[] =
     "Todos do Pixabay (pixabay.com):\n\n"
     "Coins, Magic - Game Studio\n"
     "Goblin, WOW - freesound_community\n"
     "Crickets - Alex\n"
-    "Boxing Bell, Horn - Universfield\n"
+    "Horn - Universfield\n"
     "Fah! - JohnnyBacon156";
 
 static void build_page_add(lv_obj_t *tile)
@@ -856,6 +898,12 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     s_accent = KIT_COLOR_GREEN;
     s_last_pad = -1;
 
+    /* banco EXEMPLO embutido: os .wav vêm do .kit, extraídos em
+       <data_path>/assets/ pelo instalador. Sem data_path -> só bancos do cartão. */
+    s_assets[0] = '\0';
+    if (ctx->data_path && ctx->data_path[0])
+        snprintf(s_assets, sizeof s_assets, "%s/assets", ctx->data_path);
+
     s_vol = VOL_DEFAULT;
     if (s_api->storage) {
         int32_t v;
@@ -865,12 +913,14 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     scan_banks();
 
-    int saved = 0;
+    s_cur = (s_nbanks > 0) ? 0 : -1;
     if (s_api->storage) {
-        int32_t v;
-        if (s_api->storage->get_i32(K_BANK, &v) == KIT_OK && v >= 0) saved = (int)v;
+        char saved[SB_DIR_LEN];
+        if (s_api->storage->get_str(K_BANK, saved, sizeof saved) == KIT_OK && saved[0]) {
+            int idx = find_bank(saved);
+            if (idx >= 0) s_cur = idx;
+        }
     }
-    s_cur = (s_nbanks > 0) ? (saved < s_nbanks ? saved : 0) : -1;
 
     if (s_api->imu) s_api->imu->register_shake_callback(on_shake, NULL);
 
@@ -907,6 +957,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_nbanks = 0;
     s_cur = -1;
     s_last_pad = -1;
+    s_assets[0] = '\0';
     s_api = NULL;
 }
 
