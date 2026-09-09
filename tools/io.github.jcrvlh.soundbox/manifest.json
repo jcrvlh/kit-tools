@@ -2,12 +2,12 @@
   "manifest_version": 1,
   "id": "io.github.jcrvlh.soundbox",
   "name": "Soundbox",
-  "version": "1.0.0",
-  "version_code": 1,
+  "version": "1.1.0",
+  "version_code": 2,
   "min_runtime": "0.8.0",
   "max_runtime": "1.0.0",
   "author": "jcrvlh",
-  "description": "Mesa de sons de mão: uma grade 3x3 de pads, cada toque toca um som de um banco no cartão. Monte seus bancos no conversor web e solte a pasta em /soundbox no cartão.",
+  "description": "Mesa de sons de mão: uma grade 3x3 de pads, cada toque toca um som. Já vem com o banco Exemplo; monte os seus no conversor web e solte a pasta em /soundbox no cartão.",
   "icon": "icon.bin",
   "kind": "tool",
   "accent": "#45A05B",
@@ -16,5 +16,15 @@
   "arch": "xtensa-esp32s3",
   "permissions": ["display", "audio", "storage", "imu"],
   "api_level": 1,
-  "assets": []
+  "assets": [
+    "assets/banco.json",
+    "assets/CREDITOS.txt",
+    "assets/crickets-short-version.wav",
+    "assets/efeito-sonoro-meme-johnny-bacon.wav",
+    "assets/efeito-sonoro-meme-wowowow.wav",
+    "assets/efeito-sonoro-moeda-rpg.wav",
+    "assets/efeitos-sonoros-rpg.wav",
+    "assets/goblin-growl-sound-effect.wav",
+    "assets/wah-wah-horn-sound-effect.wav"
+  ]
 }
