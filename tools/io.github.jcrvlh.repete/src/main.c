@@ -29,6 +29,8 @@
 
 #ifndef KIT_SDK_STUBS
 
+#include "shapes.h"
+
 /* --- métricas (tela 368 × 448) ---------------------------------------- */
 #define SCREEN_W      368
 #define SCREEN_H      448
@@ -53,7 +55,6 @@ static const char *HI_KEY[MODE_COUNT]    = { "repete_hi0", "repete_hi1", "repete
 /* --- formas -------------------------------------------------------------
  * Ordem: 0 círculo, 1 triângulo, 2 quadrado — associação Bauhaus/Kandinsky
  * (círculo→azul, triângulo→amarelo, quadrado→vermelho). */
-static const char *SHAPE_GLYPH[SHAPES] = { KIT_ICON_CIRCLE, KIT_ICON_TRIANGLE, KIT_ICON_SQUARE };
 static const uint32_t SHAPE_COLOR[SHAPES] = { KIT_COLOR_BLUE, KIT_COLOR_YELLOW, KIT_COLOR_RED };
 static const uint32_t SHAPE_ON[SHAPES]    = { KIT_COLOR_ON_COLOR, KIT_COLOR_ON_YELLOW, KIT_COLOR_ON_COLOR };
 static const uint16_t SHAPE_FREQ[SHAPES]  = { 330, 523, 784 };   /* grave / médio / agudo */
@@ -83,7 +84,7 @@ static lv_obj_t *s_tiles[PAGES];
 static lv_obj_t *s_dots[PAGES];
 static lv_obj_t *s_mode_chip[MODE_COUNT];
 static lv_obj_t *s_keys[SHAPES];
-static lv_obj_t *s_key_lbl[SHAPES];
+static lv_obj_t *s_key_img[SHAPES];
 static lv_obj_t *s_status_lbl = NULL;
 static lv_obj_t *s_score_lbl = NULL;
 static lv_obj_t *s_btn = NULL;
@@ -163,12 +164,12 @@ static void key_set_lit(int i, bool lit)
         lv_obj_set_style_border_width(k, 3, 0);
         lv_obj_set_style_border_color(k, lv_color_hex(SHAPE_ON[i]), 0);
         lv_obj_set_style_translate_y(k, -4, 0);
-        lv_obj_set_style_text_color(s_key_lbl[i], lv_color_hex(SHAPE_ON[i]), 0);
+        lv_obj_set_style_image_recolor(s_key_img[i], lv_color_hex(SHAPE_ON[i]), 0);
     } else {
         lv_obj_set_style_bg_color(k, lv_color_hex(KIT_COLOR_SURFACE), 0);
         lv_obj_set_style_border_width(k, 0, 0);
         lv_obj_set_style_translate_y(k, 0, 0);
-        lv_obj_set_style_text_color(s_key_lbl[i], lv_color_hex(SHAPE_COLOR[i]), 0);
+        lv_obj_set_style_image_recolor(s_key_img[i], lv_color_hex(SHAPE_COLOR[i]), 0);
     }
 }
 
@@ -511,7 +512,7 @@ static void build_page_setup(lv_obj_t *tile)
     lv_obj_set_style_pad_right(p, PAD, 0);
     lv_obj_set_style_pad_top(p, 24, 0);
     lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(p, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(p, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_row(p, 14, 0);
 
     add_label(p, "MODO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
@@ -519,7 +520,7 @@ static void build_page_setup(lv_obj_t *tile)
     lv_obj_t *row = plain_box(p);
     lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(row, 12, 0);
     s_mode_chip[MODE_CLASSIC] = make_mode_chip(row, MODE_CLASSIC);
     s_mode_chip[MODE_SPEED]   = make_mode_chip(row, MODE_SPEED);
@@ -531,7 +532,7 @@ static void build_page_setup(lv_obj_t *tile)
         KIT_COLOR_TEXT_MUTED, &kit_sans_22, 0);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(hint, CONTENT);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_LEFT, 0);
 }
 
 /* Página 1 — JOGO. O botão é filho DESTE tile. */
@@ -539,19 +540,22 @@ static void build_page_game(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
 
-    lv_obj_t *group = plain_box(tile);
-    lv_obj_set_size(group, CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(group, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(group, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(group, 16, 0);
-    lv_obj_align(group, LV_ALIGN_CENTER, 0, -(BTN_H + BTN_MARGIN) / 2);
+    lv_obj_t *col = plain_box(tile);
+    lv_obj_set_size(col, SCREEN_W, PAGE_H);
+    lv_obj_set_style_pad_left(col, PAD, 0);
+    lv_obj_set_style_pad_right(col, PAD, 0);
+    lv_obj_set_style_pad_top(col, 28, 0);
+    lv_obj_set_style_pad_bottom(col, BTN_H + BTN_MARGIN + 20, 0);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    s_status_lbl = add_label(group, "MODO CLASSICO", KIT_COLOR_TEXT, &kit_mono_26, 2);
+    s_status_lbl = add_label(col, "MODO CLASSICO", KIT_COLOR_TEXT, &kit_mono_26, 2);
     lv_obj_set_width(s_status_lbl, CONTENT);
     lv_obj_set_style_text_align(s_status_lbl, LV_TEXT_ALIGN_CENTER, 0);
 
-    lv_obj_t *keyrow = plain_box(group);
-    lv_obj_set_size(keyrow, CONTENT, KEY_SIZE);
+    lv_obj_t *keyrow = plain_box(col);
+    lv_obj_set_size(keyrow, CONTENT, KEY_SIZE + 8);
+    lv_obj_add_flag(keyrow, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     lv_obj_set_flex_flow(keyrow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(keyrow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(keyrow, KEY_GAP, 0);
@@ -567,13 +571,16 @@ static void build_page_game(lv_obj_t *tile)
         lv_obj_add_flag(k, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_ext_click_area(k, 6);
         lv_obj_add_event_cb(k, key_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-        lv_obj_t *g = add_label(k, SHAPE_GLYPH[i], SHAPE_COLOR[i], &kit_display_44, 0);
+        lv_obj_t *g = lv_image_create(k);
+        lv_image_set_src(g, SHAPE_IMG[i]);
+        lv_obj_set_style_image_recolor_opa(g, LV_OPA_COVER, 0);
+        lv_obj_set_style_image_recolor(g, lv_color_hex(SHAPE_COLOR[i]), 0);
         lv_obj_center(g);
         s_keys[i] = k;
-        s_key_lbl[i] = g;
+        s_key_img[i] = g;
     }
 
-    s_score_lbl = add_label(group, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+    s_score_lbl = add_label(col, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
     lv_obj_set_width(s_score_lbl, CONTENT);
     lv_obj_set_style_text_align(s_score_lbl, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -595,7 +602,7 @@ static void build_page_game(lv_obj_t *tile)
 
 /* Página 2 — COMO JOGA. */
 static const char RULES[] =
-    "1. Toque em COMECAR. O KIT acende as formas numa ordem — preste atencao.\n\n"
+    "1. Toque em COMECAR. O KIT acende as formas numa ordem - preste atencao.\n\n"
     "2. Sua vez: repita a ordem tocando nas formas (circulo, triangulo, quadrado).\n\n"
     "3. Acertou a sequencia inteira? Ela ganha mais uma forma. Errou uma, acabou.\n\n"
     "No AJUSTE voce troca o modo: Classico, Velocidade (acelera) ou Inverso (de tras pra frente).";
@@ -610,6 +617,7 @@ static void build_page_help(lv_obj_t *tile)
     lv_obj_set_style_pad_bottom(p, 32, 0);
     lv_obj_set_style_pad_row(p, 14, 0);
     lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);
+    lv_obj_add_flag(p, LV_OBJ_FLAG_SCROLLABLE);   /* plain_box tira essa flag */
     lv_obj_set_scroll_dir(p, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
 
@@ -681,7 +689,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_tv = NULL;
     for (int i = 0; i < PAGES; i++)  { s_tiles[i] = NULL; s_dots[i] = NULL; }
     for (int i = 0; i < MODE_COUNT; i++) s_mode_chip[i] = NULL;
-    for (int i = 0; i < SHAPES; i++) { s_keys[i] = NULL; s_key_lbl[i] = NULL; }
+    for (int i = 0; i < SHAPES; i++) { s_keys[i] = NULL; s_key_img[i] = NULL; }
     s_status_lbl = s_score_lbl = s_btn = s_btn_lbl = NULL;
 
     s_state = ST_IDLE;
