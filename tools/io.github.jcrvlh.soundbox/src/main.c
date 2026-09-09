@@ -133,7 +133,8 @@ static const char *j_skip_ws(const char *p, const char *end)
     return p;
 }
 
-/* p aponta para '"'. Copia a string (des-escapa \" \\ \/ \n \t) para out. */
+/* p aponta para '"'. Copia a string (des-escapa \" \\ \/ \n \t) para out
+   (out/cap podem ser NULL/0 — aí só anda até depois das aspas de fecho). */
 static const char *j_str(const char *p, const char *end, char *out, size_t cap)
 {
     size_t o = 0;
@@ -150,7 +151,7 @@ static const char *j_str(const char *p, const char *end, char *out, size_t cap)
                 default:  c = e;    break;   /* " \ / e o resto: literal */
             }
         }
-        if (o < cap - 1) out[o++] = c;
+        if (cap && o + 1 < cap) out[o++] = c;
     }
     if (p < end) p++;   /* fecha aspas */
     if (cap) out[o] = '\0';
@@ -162,13 +163,13 @@ static const char *j_skip_value(const char *p, const char *end)
 {
     p = j_skip_ws(p, end);
     if (p >= end) return p;
-    if (*p == '"') { char t[4]; return j_str(p, end, t, 0 ? 0 : 1), j_str(p, end, t, 1); }
+    if (*p == '"') return j_str(p, end, NULL, 0);
     if (*p == '{' || *p == '[') {
         char open = *p, close = (open == '{') ? '}' : ']';
         int depth = 0;
         while (p < end) {
             char c = *p;
-            if (c == '"') { char t[4]; p = j_str(p, end, t, 1); continue; }
+            if (c == '"') { p = j_str(p, end, NULL, 0); continue; }
             if (c == open)  depth++;
             if (c == close) { depth--; p++; if (depth == 0) return p; continue; }
             p++;
