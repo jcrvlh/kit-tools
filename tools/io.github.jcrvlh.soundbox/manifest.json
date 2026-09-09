@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.soundbox",
+  "name": "Soundbox",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.8.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mesa de sons de mão: uma grade 3x3 de pads, cada toque toca um som de um banco no cartão. Monte seus bancos no conversor web e solte a pasta em /soundbox no cartão.",
+  "icon": "icon.bin",
+  "kind": "tool",
+  "accent": "#45A05B",
+  "home_icon": "soundbox",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "audio", "storage", "imu"],
+  "api_level": 1,
+  "assets": []
+}
