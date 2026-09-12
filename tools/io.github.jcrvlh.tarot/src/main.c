@@ -77,6 +77,7 @@ static lv_obj_t   *s_tiles[5]  = { 0 };
 static lv_obj_t   *s_dots[5]   = { 0 };
 static int         s_dot_n     = 0;
 static lv_obj_t   *s_footer    = NULL;    /* botão-pílula do menu (some nos Ajustes) */
+static lv_obj_t   *s_footer_lbl = NULL;   /* label do botão-pílula, pra trocar o texto */
 static lv_obj_t   *s_shuf_lbl  = NULL;    /* nome que gira no embaralho */
 static lv_obj_t   *s_shuf_card = NULL;    /* quadro "roleta" que pisca no embaralho */
 static lv_obj_t   *s_shuf_dots[16] = { 0 };  /* marcas que enchem conforme desacelera */
@@ -101,6 +102,7 @@ static void build_menu_at(int start_tile);
 static void menu_sync_footer(void);
 static void build_shuffle(void);
 static void build_result(void);
+static void result_sync_footer(void);
 
 /* --------------------------------------------------------------------------
  * RNG (adapta ctx->api->random->range à assinatura tarot_rng_fn)
@@ -265,7 +267,8 @@ static lv_obj_t *build_footer(lv_obj_t *scr, const char *text, lv_event_cb_t cb)
     lv_obj_set_ext_click_area(b, 10);
     lv_obj_align(b, LV_ALIGN_BOTTOM_MID, 0, -T_BTN_MARGIN);
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_center(add_label(b, text, on_accent(), &kit_mono_26, 3));
+    s_footer_lbl = add_label(b, text, on_accent(), &kit_mono_26, 3);
+    lv_obj_center(s_footer_lbl);
     return b;
 }
 
@@ -284,6 +287,7 @@ static lv_obj_t *new_screen(void)
     s_tv = NULL;
     s_dot_n = 0;
     s_footer = NULL;
+    s_footer_lbl = NULL;
     s_shuf_lbl = NULL;
     s_shuf_card = NULL;
     s_shuf_dot_n = 0;
@@ -374,6 +378,7 @@ static void tv_changed_cb(lv_event_t *e)
     if (!s_tv) return;   /* ignora eventos disparados durante a construção */
     sync_dots();          /* deslizar é mudo — o bipe a cada swipe cansava */
     menu_sync_footer();
+    result_sync_footer();
 }
 
 static void build_tileview(lv_obj_t *scr, int n_tiles, int page_h)
@@ -495,7 +500,7 @@ static void chip_pair(lv_obj_t *col, const char *label,
     add_label(col, label, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
 
     lv_obj_t *row = plain_box(col);
-    lv_obj_set_size(row, T_CONTENT, 60);
+    lv_obj_set_size(row, T_CONTENT, KIT_TOUCH_TARGET_COMFORTABLE);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(row, 10, 0);
 
@@ -504,7 +509,7 @@ static void chip_pair(lv_obj_t *col, const char *label,
     for (int i = 0; i < 2; i++) {
         bool sel = (i == 0) ? a_sel : !a_sel;
         lv_obj_t *chip = lv_obj_create(row);
-        lv_obj_set_height(chip, 60);
+        lv_obj_set_height(chip, KIT_TOUCH_TARGET_COMFORTABLE);
         lv_obj_set_flex_grow(chip, 1);
         lv_obj_set_style_bg_color(chip,
             lv_color_hex(sel ? T_ACCENT : KIT_COLOR_SURFACE), 0);
@@ -563,7 +568,7 @@ static void build_menu_tile_settings(lv_obj_t *tile)
 
     hairline(col);
 
-    add_label(col, "v1.1.0", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
+    add_label(col, "v1.3.0", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
 }
 
 /* Mostra ou esconde o botão-pílula: só faz sentido na PRINCIPAL; nos Ajustes
@@ -729,6 +734,35 @@ static void again_cb(lv_event_t *e)
     build_shuffle();
 }
 
+/* Rodapé da tiragem de 1 carta: avança de tile em tile (A CARTA -> O QUE É ->
+ * NA LEITURA) e só na última página vira "TIRAR OUTRA". "Tirar outra" é
+ * irreversível (descarta a leitura), então fica atrás de dois toques em vez
+ * de ser o primeiro botão que a mão encontra — evita repuxar a tiragem sem
+ * querer. */
+static void result_single_footer_cb(lv_event_t *e)
+{
+    if (!s_tv) return;
+    lv_obj_t *act = lv_tileview_get_tile_active(s_tv);
+    if (act == s_tiles[2]) {
+        again_cb(e);
+        return;
+    }
+    sfx_tap();
+    int idx = (act == s_tiles[1]) ? 2 : 1;
+    lv_tileview_set_tile_by_index(s_tv, (uint32_t)idx, 1, LV_ANIM_ON);
+}
+
+/* Troca o texto do rodapé conforme a página ativa (só na tiragem de 1 carta;
+ * na de 3 o rodapé é sempre "NOVA TIRAGEM"). */
+static void result_sync_footer(void)
+{
+    if (!s_footer_lbl || !s_tv || s_state != ST_RESULT || s_result_n != 1) return;
+    lv_obj_t *act = lv_tileview_get_tile_active(s_tv);
+    const char *txt = (act == s_tiles[2]) ? "TIRAR OUTRA"
+                     : (act == s_tiles[1]) ? "NA LEITURA" : "O QUE \xC3\x89";
+    lv_label_set_text(s_footer_lbl, tr(txt));
+}
+
 /* --- 1 carta: [0] A CARTA · [1] O QUE É · [2] NA LEITURA --- */
 static void result_single_tile(lv_obj_t *tile, int idx)
 {
@@ -809,10 +843,12 @@ static void build_result(void)
         else        result_single_tile(s_tiles[i], i);
     }
 
-    build_footer(scr, triple ? "NOVA TIRAGEM" : "TIRAR OUTRA", again_cb);
+    if (triple) build_footer(scr, "NOVA TIRAGEM", again_cb);
+    else        build_footer(scr, "O QUE \xC3\x89", result_single_footer_cb);
 
     lv_obj_update_layout(scr);
     sync_dots();
+    result_sync_footer();
     show_screen(scr);
 }
 
