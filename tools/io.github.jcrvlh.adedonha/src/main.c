@@ -37,6 +37,7 @@
 #include "kit_tool_api.h"
 #include "kit_theme.h"
 #include "kit_fonts.h"
+#include "kit_ui.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -382,10 +383,15 @@ static void build_gen_url(char *url, size_t cap)
     url[o] = 0;
 }
 
-// QR pro gerador de folhas + a nota que puxa pro papel. É a exceção ao preto
-// AMOLED: quadrado branco, código no KIT_COLOR_BG, pra ler numa câmera.
+// QR pro gerador de folhas + a nota que puxa pro papel. Usa o componente do
+// SDK (kit_ui_qr): quadrado branco com o código no KIT_COLOR_BG, "Toque para
+// expandir" embaixo, e o toque abre em tela cheia com o brilho no máximo.
+static kit_ui_qr_t s_gen_qr;
+
 static void add_gen_qr(lv_obj_t *parent)
 {
+    kit_ui_qr_close(&s_gen_qr);   // a página é reconstruída: some com o expandido
+
     lv_obj_t *box = plain_box(parent);
     lv_obj_set_width(box, X_CONTENT);
     lv_obj_set_height(box, LV_SIZE_CONTENT);
@@ -394,18 +400,9 @@ static void add_gen_qr(lv_obj_t *parent)
     lv_obj_set_style_pad_row(box, 14, 0);
     lv_obj_set_style_pad_top(box, 34, 0);   // respiro entre a lista de categorias e o QR
 
-    lv_obj_t *qr = lv_qrcode_create(box);
-    lv_qrcode_set_size(qr, 148);
-    lv_qrcode_set_dark_color(qr, lv_color_hex(KIT_COLOR_BG));
-    lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
-    lv_qrcode_set_quiet_zone(qr, true);
-    lv_obj_set_style_border_width(qr, 8, 0);
-    lv_obj_set_style_border_color(qr, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_radius(qr, 3, 0);
-
     char url[GEN_URL_MAX];
     build_gen_url(url, sizeof url);
-    lv_qrcode_update(qr, url, (uint32_t)strlen(url));
+    kit_ui_qr(&s_gen_qr, box, url);
 
     lv_obj_t *note = add_label(box, GEN_NOTE, KIT_COLOR_TEXT, &kit_sans_28, 0);
     lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
@@ -1260,6 +1257,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 {
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
     s_api = ctx->api;
+    kit_ui_bind(s_api);
     printf("[Adedonha] tool_init (id=%s)\n", ctx->tool_id ? ctx->tool_id : "?");
 
     s_accent  = KIT_COLOR_BLUE;
@@ -1327,6 +1325,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_go_btn = s_go_lbl = NULL;
     s_cart_hdr = s_cart_list = NULL;
     s_ov = s_ov_sub = s_ov_btn = NULL;
+    kit_ui_qr_reset(&s_gen_qr);
     s_api = NULL;
 }
 

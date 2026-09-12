@@ -23,6 +23,7 @@
 #include "kit_tool_api.h"
 #include "kit_theme.h"
 #include "kit_fonts.h"
+#include "kit_ui.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -787,6 +788,8 @@ static const char CREDITS[] =
     "Horn - Universfield\n"
     "Fah! - JohnnyBacon156";
 
+static kit_ui_qr_t s_conv_qr;
+
 static void build_page_add(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
@@ -813,15 +816,9 @@ static void build_page_add(lv_obj_t *tile)
     lv_obj_set_flex_align(qwrap, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_top(qwrap, 6, 0);
 
-    lv_obj_t *qr = lv_qrcode_create(qwrap);
-    lv_qrcode_set_size(qr, 150);
-    lv_qrcode_set_dark_color(qr, lv_color_hex(KIT_COLOR_BG));
-    lv_qrcode_set_light_color(qr, lv_color_hex(0xFFFFFF));
-    lv_qrcode_set_quiet_zone(qr, true);
-    lv_qrcode_update(qr, SB_CONVERTER_URL, sizeof(SB_CONVERTER_URL) - 1);
-    lv_obj_set_style_border_width(qr, 8, 0);
-    lv_obj_set_style_border_color(qr, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_radius(qr, 3, 0);
+    // QR do conversor no padrão do KIT: toque expande em tela cheia com o
+    // brilho no máximo (kit_ui_qr, tools-sdk/include/kit_ui.h).
+    kit_ui_qr(&s_conv_qr, qwrap, SB_CONVERTER_URL);
 
     lv_obj_t *sep = add_label(p, "SONS DE EXEMPLO", s_accent, &kit_mono_16, 2);
     lv_obj_set_width(sep, X_CONTENT);
@@ -893,6 +890,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 {
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
     s_api = ctx->api;
+    kit_ui_bind(s_api);
     printf("[Soundbox] tool_init (id=%s)\n", ctx->tool_id);
 
     s_accent = KIT_COLOR_GREEN;
@@ -958,6 +956,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_cur = -1;
     s_last_pad = -1;
     s_assets[0] = '\0';
+    kit_ui_qr_reset(&s_conv_qr);
     s_api = NULL;
 }
 
