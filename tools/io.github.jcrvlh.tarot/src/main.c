@@ -568,7 +568,7 @@ static void build_menu_tile_settings(lv_obj_t *tile)
 
     hairline(col);
 
-    add_label(col, "v1.3.0", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
+    add_label(col, "v1.3.1", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
 }
 
 /* Mostra ou esconde o botão-pílula: só faz sentido na PRINCIPAL; nos Ajustes
@@ -749,7 +749,7 @@ static void result_single_footer_cb(lv_event_t *e)
     }
     sfx_tap();
     int idx = (act == s_tiles[1]) ? 2 : 1;
-    lv_tileview_set_tile_by_index(s_tv, (uint32_t)idx, 1, LV_ANIM_ON);
+    lv_tileview_set_tile_by_index(s_tv, (uint32_t)idx, 0, LV_ANIM_ON);
 }
 
 /* Troca o texto do rodapé conforme a página ativa (só na tiragem de 1 carta;
@@ -772,7 +772,6 @@ static void result_single_tile(lv_obj_t *tile, int idx)
     if (idx == 0) {
         lv_obj_t *col = scroll_col(tile, 28, 20);
         card_head(col, p);
-        swipe_hint(col, "deslize para a leitura \xE2\x86\x92");
         return;
     }
 
