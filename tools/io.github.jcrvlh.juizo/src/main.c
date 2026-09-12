@@ -1,11 +1,14 @@
 /**
  * @file main.c
- * @brief Juízo — a Bola 8 do KIT: toque, pergunte e receba um veredito seco.
+ * @brief Juízo — o veredito do KIT: toque, pergunte e receba uma resposta seca.
  *
  * Sem chatbot, sem interpretar a pergunta — a resposta é sorteada de um
- * banco fixo de 23 frases brasileiras, curtas e levemente debochadas. A
- * mecânica é objeto → ritual → veredito: um orbe no centro da tela balança
- * enquanto o Juízo "pensa", e a resposta trava grande, dominando a tela.
+ * banco fixo de 23 frases brasileiras, curtas e levemente debochadas. O
+ * objeto é uma pedra quadrada e escura (não uma bola — de propósito, pra não
+ * copiar a Bola 8), anel vermelho, com uma janela circular no centro — o
+ * contraste quadrado/círculo é a própria gramática Bauhaus. Ao tocar, a
+ * pedra dá 3 saltos decrescentes (thud a cada pouso), segura um instante de
+ * suspense e a tela inteira pisca antes do veredito travar na janela.
  *
  * Linguagem visual "Brutalist Bauhaus" (kit_theme.h / kit_fonts.h).
  * Toda a UI fica atrás de #ifndef KIT_SDK_STUBS — ver tool_lvgl_runtime.md.
@@ -15,7 +18,6 @@
 #include "kit_theme.h"
 #include "kit_fonts.h"
 
-#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -33,16 +35,18 @@
 #define J_GO_MARGIN  18
 #define J_PAGE_H     (KIT_DISPLAY_HEIGHT - J_TITLEBAR - J_FOOT)
 
-#define J_ORB_D      84   // diâmetro do orbe
+#define J_STONE_D    210   // pedra: quadrado arredondado, não círculo — de
+#define J_STONE_R    36    // propósito, pra não ler como a Bola 8
+#define J_RING_W     10
+#define J_WINDOW_D   148   // janela circular central onde o veredito aparece
+#define J_ANSWER_W   112   // largura do texto dentro da janela (< diâmetro)
 
-// Sorteio: flicker desacelerando (ease-out), o "pensar" antes do veredito.
-#define J_DRAW_TICKS   16
-#define J_DRAW_MS_MIN  40
-#define J_DRAW_MS_MAX  130
-
-// O orbe balança de leve durante o "pensar" — sem float, só inteiro.
-static const int8_t ORB_WOBBLE[] = { 0, -7, 7, -6, 6, -5, 5, -4, 4, -3, 3, -2, 2, -1, 1, 0 };
-#define ORB_WOBBLE_N ((int)(sizeof(ORB_WOBBLE) / sizeof(ORB_WOBBLE[0])))
+// Salto: 3 pousos decrescentes (translate_y), thud só no pouso (valor 0).
+// Sem float — só inteiro. Cada tick tem o mesmo período (J_BOUNCE_MS).
+static const int8_t BOUNCE_Y[] = { -20, -8, 0, -13, -5, 0, -7, -2, 0 };
+#define BOUNCE_N ((int)(sizeof(BOUNCE_Y) / sizeof(BOUNCE_Y[0])))
+#define J_BOUNCE_MS    70
+#define J_SUSPENSE_MS  260
 
 // Banco de respostas — brasileiro, seco, sem "nordestinês" forçado.
 static const char *const ANSWERS[] = {
@@ -72,26 +76,40 @@ static const char *const ANSWERS[] = {
 };
 #define ANSWERS_N ((int)(sizeof(ANSWERS) / sizeof(ANSWERS[0])))
 
-// --- estado --------------------------------------------------------------
+typedef enum {
+    PHASE_IDLE = 0,
+    PHASE_BOUNCE,
+    PHASE_SUSPENSE,
+    PHASE_FLASH,
+} phase_t;
+
+// Flash de tela cheia no instante do veredito: cobre tudo opaco e desbota em
+// poucos passos — a resposta já está por baixo, revelada aos poucos. Só
+// inteiro (degraus de LV_OPA), sem lv_anim (fora da whitelist do runtime).
+static const uint8_t FLASH_OPA[] = { 255, 190, 120, 60, 0 };
+#define FLASH_N ((int)(sizeof(FLASH_OPA) / sizeof(FLASH_OPA[0])))
+#define J_FLASH_MS  45
+
+// --- estado ----------------------------------------------------------------
 static const kit_api_table_t *s_api = NULL;
 
-static uint32_t s_accent  = KIT_COLOR_RED;
-static bool     s_asking  = false;
-static bool     s_asked   = false;    // já houve ao menos uma pergunta
-static int      s_last    = -1;
-static int      s_target  = -1;
-static int      s_tick    = 0;
+static uint32_t s_accent = KIT_COLOR_RED;
+static phase_t  s_phase  = PHASE_IDLE;
+static int      s_last   = -1;
+static int      s_target = -1;
+static int      s_tick   = 0;
 static lv_timer_t *s_timer = NULL;
 
-// --- objetos LVGL ---------------------------------------------------------
-static lv_obj_t *s_screen    = NULL;
-static lv_obj_t *s_orb_wrap  = NULL;
-static lv_obj_t *s_orb       = NULL;
-static lv_obj_t *s_answer    = NULL;
-static lv_obj_t *s_status    = NULL;
-static lv_obj_t *s_go_btn    = NULL;
+// --- objetos LVGL ------------------------------------------------------
+static lv_obj_t *s_screen     = NULL;
+static lv_obj_t *s_stone_wrap = NULL;
+static lv_obj_t *s_stone     = NULL;
+static lv_obj_t *s_window     = NULL;
+static lv_obj_t *s_answer     = NULL;
+static lv_obj_t *s_go_btn     = NULL;
+static lv_obj_t *s_flash      = NULL;
 
-// --- helpers ---------------------------------------------------------
+// --- helpers -------------------------------------------------------------
 
 static inline uint32_t on_accent(void)
 {
@@ -128,61 +146,82 @@ static lv_obj_t *plain_box(lv_obj_t *parent)
     return o;
 }
 
-// --- pergunta / veredito ------------------------------------------------
+// --- pergunta / veredito ---------------------------------------------------
+//
+// Toda a sequência usa APENAS lv_timer + beep() de duração explícita — nunca
+// um kit_sfx_t de duração fixa e desconhecida, que continuaria tocando depois
+// da animação terminar se o timing não bater exatamente (foi o defeito da
+// primeira versão: KIT_SFX_ROULETTE não parava quando o sorteio travava).
 
-static void draw_tick_cb(lv_timer_t *t);
+static void bounce_tick_cb(lv_timer_t *t);
+static void suspense_done_cb(lv_timer_t *t);
+static void flash_tick_cb(lv_timer_t *t);
 
 static void do_ask(void)
 {
-    if (s_asking || !s_answer) return;
-    s_asking = true;
+    if (s_phase != PHASE_IDLE || !s_answer) return;
     s_target = rnd_index();
+    s_tick = 0;
+    s_phase = PHASE_BOUNCE;
 
-    if (!s_asked) {
-        s_asked = true;
-        lv_obj_remove_flag(s_status, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_set_style_text_color(s_answer, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
-    lv_label_set_text(s_status, "");
+    lv_label_set_text(s_answer, "");
     lv_obj_set_style_opa(s_go_btn, LV_OPA_60, 0);   // "ocupado"
 
-    s_tick = 0;
-    if (s_api && s_api->audio) s_api->audio->sfx(KIT_SFX_ROULETTE);
-    s_timer = lv_timer_create(draw_tick_cb, J_DRAW_MS_MIN, NULL);
+    if (s_timer) { lv_timer_delete(s_timer); s_timer = NULL; }
+    s_timer = lv_timer_create(bounce_tick_cb, J_BOUNCE_MS, NULL);
+    lv_timer_set_repeat_count(s_timer, BOUNCE_N);
 }
 
-static void draw_tick_cb(lv_timer_t *t)
+static void bounce_tick_cb(lv_timer_t *t)
 {
     (void)t;
-
-    int wobble_i = s_tick % ORB_WOBBLE_N;
-    lv_obj_set_style_translate_x(s_orb_wrap, ORB_WOBBLE[wobble_i], 0);
+    int y = BOUNCE_Y[s_tick];
+    lv_obj_set_style_translate_y(s_stone_wrap, y, 0);
+    if (y == 0 && s_api && s_api->audio)
+        s_api->audio->beep(160, 18);   // thud curto e seco a cada pouso
 
     s_tick++;
+    if (s_tick < BOUNCE_N) return;
 
-    if (s_tick < J_DRAW_TICKS) {
-        int i = 0;
-        if (s_api && s_api->random)
-            i = (int)s_api->random->range(0, ANSWERS_N - 1);
-        lv_label_set_text(s_answer, ANSWERS[i]);
+    s_timer = NULL;
+    s_phase = PHASE_SUSPENSE;
+    s_timer = lv_timer_create(suspense_done_cb, J_SUSPENSE_MS, NULL);
+    lv_timer_set_repeat_count(s_timer, 1);
+}
 
-        uint32_t p = J_DRAW_MS_MIN +
-            (uint32_t)(J_DRAW_MS_MAX - J_DRAW_MS_MIN) * s_tick / (J_DRAW_TICKS - 1);
-        lv_timer_set_period(s_timer, p);
-        return;
-    }
+static void suspense_done_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_timer = NULL;
+    s_phase = PHASE_FLASH;
+    s_tick  = 0;
 
-    // trava na resposta sorteada
+    // A resposta já é trocada AQUI, encoberta pelo flash opaco — o desbotar
+    // seguinte revela o veredito, em vez de só aparecer.
     s_last = s_target;
     lv_label_set_text(s_answer, ANSWERS[s_target]);
     lv_obj_set_style_text_color(s_answer, lv_color_hex(s_accent), 0);
-    lv_label_set_text(s_status, "TOQUE PRA PERGUNTAR DE NOVO");
-    lv_obj_set_style_translate_x(s_orb_wrap, 0, 0);
 
-    if (s_timer) { lv_timer_delete(s_timer); s_timer = NULL; }
-    s_asking = false;
-    lv_obj_set_style_opa(s_go_btn, LV_OPA_COVER, 0);
     if (s_api && s_api->audio) s_api->audio->sfx(KIT_SFX_REVEAL);
+
+    lv_obj_set_style_bg_opa(s_flash, FLASH_OPA[0], 0);
+    lv_obj_remove_flag(s_flash, LV_OBJ_FLAG_HIDDEN);
+    s_timer = lv_timer_create(flash_tick_cb, J_FLASH_MS, NULL);
+    lv_timer_set_repeat_count(s_timer, FLASH_N - 1);
+}
+
+static void flash_tick_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_tick++;
+    lv_obj_set_style_bg_opa(s_flash, FLASH_OPA[s_tick], 0);
+
+    if (s_tick < FLASH_N - 1) return;
+
+    s_timer = NULL;
+    s_phase = PHASE_IDLE;
+    lv_obj_add_flag(s_flash, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_opa(s_go_btn, LV_OPA_COVER, 0);
 }
 
 static void on_shake(void *user_data)
@@ -236,41 +275,45 @@ static void build_stage(void)
     lv_obj_set_pos(stage, 0, J_TITLEBAR);
     lv_obj_remove_flag(stage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(stage, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(stage, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     lv_obj_add_event_cb(stage, ask_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *col = plain_box(stage);
-    lv_obj_set_size(col, KIT_DISPLAY_WIDTH, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(col, 18, 0);
-    lv_obj_remove_flag(col, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(col, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_obj_center(col);
+    // Pedra: quadrado arredondado (J_STONE_R, não J_STONE_D/2 — de propósito
+    // pra não virar círculo/bola), anel vermelho sobre base escura. Balança
+    // (translate_y) ao pousar; o contraste quadrado/círculo com a janela
+    // dentro é a própria gramática Bauhaus, não uma Bola 8 achatada.
+    s_stone_wrap = plain_box(stage);
+    lv_obj_set_size(s_stone_wrap, J_STONE_D, J_STONE_D);
+    lv_obj_add_flag(s_stone_wrap, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_center(s_stone_wrap);
 
-    // Orbe: o "objeto" do Juízo. Balança (translate_x) enquanto pensa.
-    s_orb_wrap = plain_box(col);
-    lv_obj_set_size(s_orb_wrap, J_ORB_D, J_ORB_D);
-    lv_obj_add_flag(s_orb_wrap, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_stone = lv_obj_create(s_stone_wrap);
+    lv_obj_remove_style_all(s_stone);
+    lv_obj_set_size(s_stone, J_STONE_D, J_STONE_D);
+    lv_obj_set_style_radius(s_stone, J_STONE_R, 0);
+    lv_obj_set_style_bg_color(s_stone, lv_color_hex(KIT_COLOR_SURFACE), 0);
+    lv_obj_set_style_bg_opa(s_stone, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_stone, J_RING_W, 0);
+    lv_obj_set_style_border_color(s_stone, lv_color_hex(s_accent), 0);
+    lv_obj_set_style_border_opa(s_stone, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(s_stone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(s_stone);
 
-    s_orb = lv_obj_create(s_orb_wrap);
-    lv_obj_remove_style_all(s_orb);
-    lv_obj_set_size(s_orb, J_ORB_D, J_ORB_D);
-    lv_obj_set_style_radius(s_orb, J_ORB_D / 2, 0);
-    lv_obj_set_style_bg_color(s_orb, lv_color_hex(s_accent), 0);
-    lv_obj_set_style_bg_opa(s_orb, LV_OPA_COVER, 0);
-    lv_obj_remove_flag(s_orb, LV_OBJ_FLAG_SCROLLABLE);
+    // Janela central circular: onde o veredito aparece.
+    s_window = lv_obj_create(s_stone);
+    lv_obj_remove_style_all(s_window);
+    lv_obj_set_size(s_window, J_WINDOW_D, J_WINDOW_D);
+    lv_obj_set_style_radius(s_window, J_WINDOW_D / 2, 0);
+    lv_obj_set_style_bg_color(s_window, lv_color_hex(KIT_COLOR_BG), 0);
+    lv_obj_set_style_bg_opa(s_window, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(s_window, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(s_window);
 
-    lv_obj_t *mark = add_label(s_orb, "?", on_accent(), &kit_display_44, 0);
-    lv_obj_center(mark);
-
-    s_answer = add_label(col, "Pergunte.", KIT_COLOR_TEXT_MUTED, &kit_sans_28, 0);
+    s_answer = add_label(s_window, "Pergunte.", KIT_COLOR_TEXT_MUTED, &kit_sans_22, 0);
     lv_label_set_long_mode(s_answer, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_answer, J_CONTENT);
+    lv_obj_set_width(s_answer, J_ANSWER_W);
     lv_obj_set_style_text_align(s_answer, LV_TEXT_ALIGN_CENTER, 0);
-
-    s_status = add_label(col, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    lv_obj_add_flag(s_status, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_center(s_answer);
 }
 
 static void build_footer(void)
@@ -294,17 +337,28 @@ static void build_footer(void)
     lv_obj_center(l);
 }
 
+// Camada de flash: tela cheia, por cima de tudo, oculta até o veredito.
+static void build_flash(void)
+{
+    s_flash = lv_obj_create(s_screen);
+    lv_obj_remove_style_all(s_flash);
+    lv_obj_set_size(s_flash, KIT_DISPLAY_WIDTH, KIT_DISPLAY_HEIGHT);
+    lv_obj_set_pos(s_flash, 0, 0);
+    lv_obj_set_style_bg_color(s_flash, lv_color_hex(s_accent), 0);
+    lv_obj_set_style_bg_opa(s_flash, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(s_flash, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_flash, LV_OBJ_FLAG_HIDDEN);
+}
+
 // --- ciclo de vida da Tool ---------------------------------------
 
 KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 {
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
-    printf("[Juízo] tool_init\n");
     s_api = ctx->api;
 
     s_accent = KIT_COLOR_RED;
-    s_asking = false;
-    s_asked  = false;
+    s_phase  = PHASE_IDLE;
     s_last   = -1;
     s_target = -1;
     s_tick   = 0;
@@ -319,6 +373,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     build_titlebar();
     build_stage();
     build_footer();
+    build_flash();
 
     lv_screen_load(s_screen);
     return KIT_OK;
@@ -326,17 +381,16 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
 KIT_TOOL_EXPORT void tool_destroy(void)
 {
-    printf("[Juízo] tool_destroy\n");
     if (s_timer) { lv_timer_delete(s_timer); s_timer = NULL; }
     if (s_api && s_api->imu)
         s_api->imu->register_shake_callback(NULL, NULL);
-    s_asking = false;
+    s_phase = PHASE_IDLE;
 
     if (s_screen) {
         lv_obj_delete(s_screen);
         s_screen = NULL;
     }
-    s_orb_wrap = s_orb = s_answer = s_status = s_go_btn = NULL;
+    s_stone_wrap = s_stone = s_window = s_answer = s_go_btn = s_flash = NULL;
     s_api = NULL;
 }
 
