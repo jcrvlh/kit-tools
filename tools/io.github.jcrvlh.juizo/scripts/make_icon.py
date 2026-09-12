@@ -17,14 +17,15 @@ TOOL_DIR = Path(__file__).resolve().parent.parent
 
 DESIGN = 240.0
 CARD = (14.0, 8.0, 212.0, 224.0, 24.0)          # x, y, w, h, r
-ORB_CENTER = (120.0, 122.0)
-ORB_R = 78.0
+# Pedra: quadrado arredondado — não círculo, de propósito (não é a Bola 8).
+STONE = (45.0, 47.0, 150.0, 150.0, 26.0)
+WINDOW_CENTER = (120.0, 122.0)
 WINDOW_R = 44.0
 STROKE = 3.0
 
 CARD_FILL   = (0x0A, 0x0A, 0x0B, 255)
 CARD_BORDER = (0x3A, 0x3A, 0x3E, 255)
-ORB_COLOR   = (0xC6, 0x47, 0x2F, 255)
+STONE_COLOR = (0xC6, 0x47, 0x2F, 255)
 
 SS = 4  # subamostras por eixo
 
@@ -41,12 +42,11 @@ def _sample(px, py):
     if _round_rect_sdf(px, py, *CARD) > 0:
         return (0, 0, 0, 0)
 
-    cx, cy = ORB_CENTER
-    d = math.hypot(px - cx, py - cy)
-    if d <= WINDOW_R:
+    cx, cy = WINDOW_CENTER
+    if math.hypot(px - cx, py - cy) <= WINDOW_R:
         return CARD_FILL
-    if d <= ORB_R:
-        return ORB_COLOR
+    if _round_rect_sdf(px, py, *STONE) <= 0:
+        return STONE_COLOR
 
     x, y, w, h, r = CARD
     inner = (x + STROKE, y + STROKE, w - 2 * STROKE, h - 2 * STROKE, r - STROKE)
