@@ -701,14 +701,20 @@ static void render_phase(void)
         break;
     case FORA_PHASE_REVEAL: {
         /* FORA e não-FORA têm exatamente o mesmo peso/cor — um olhar de canto
-           não distingue quem recebeu o quê. */
+           não distingue quem recebeu o quê. O ASSUNTO já vaza pro FORA no
+           chute final (as 4 opções são da mesma categoria), então mostrar
+           aqui também não muda o que ele sabe. */
         const char *w = g->current_player == g->fora_player ? "FORA" : fora_game_get_word(g);
         int ls = 1;
         const lv_font_t *wf = word_font(w, &ls);
-        P("SUA PALAVRA", w, NULL, "OCULTAR", wf, TX);
+        snprintf(b, sizeof b, "ASSUNTO: %s", fora_game_get_category_name(g));
+        P("SUA PALAVRA", w, b, "OCULTAR", wf, TX);
         lv_obj_set_style_text_letter_space(s_big, ls, 0);
         lv_obj_set_style_text_font(s_meta, &kit_mono_16, 0);
         lv_obj_set_style_text_color(s_meta, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+        lv_obj_set_style_text_font(s_sub, &kit_mono_20, 0);
+        lv_obj_set_style_text_color(s_sub, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+        lv_obj_set_style_text_letter_space(s_sub, 1, 0);
         break;
     }
     case FORA_PHASE_ALL_READY:
