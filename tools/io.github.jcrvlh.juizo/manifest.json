@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.juizo",
+  "name": "Juízo",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Faça uma pergunta, toque no Juízo e receba um veredito curto e sem pena.",
+  "icon": "icon.bin",
+  "kind": "tool",
+  "accent": "#C6472F",
+  "home_icon": "ask",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": ["display", "input", "random", "audio", "imu"],
+  "api_level": 1,
+  "assets": []
+}
