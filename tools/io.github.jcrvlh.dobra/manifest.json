@@ -1,0 +1,27 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.dobra",
+  "name": "Dobra",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Arraste as peças: duas iguais se juntam e dobram. Chegue à meta antes de o tabuleiro encher.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#45A05B",
+  "home_icon": "card",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "input",
+    "storage",
+    "random",
+    "audio",
+    "imu"
+  ],
+  "api_level": 1,
+  "assets": []
+}
