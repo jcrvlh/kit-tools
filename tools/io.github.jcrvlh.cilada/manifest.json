@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.cilada",
+  "name": "Cilada",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Mini-jogo de mesa inspirado no pula pirata: segure um furo da grade e torça pra não ser a cilada. Quem cai sai da roda; sobrou um, ganhou. Cartas ESPIA, APONTA, +1 e ESCUDO opcionais, e um furo que às vezes treme.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#C6472F",
+  "home_icon": "card",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "random",
+    "storage",
+    "audio",
+    "power"
+  ],
+  "api_level": 1,
+  "assets": []
+}
