@@ -1,0 +1,27 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.divisa",
+  "name": "Divisa",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.1.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Duelo de toques pra 2 com o KIT deitado entre os dois: a sua metade acende, você toca o mais rápido que puder. Janelas curtas alternadas, tempo sorteado e igual pros dois, placar escondido. No fim, a apuração rodada a rodada move a divisa — ganha quem conquistar mais território.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#E9B23C",
+  "home_icon": "card",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "input",
+    "random",
+    "storage",
+    "audio",
+    "power"
+  ],
+  "api_level": 1,
+  "assets": []
+}
