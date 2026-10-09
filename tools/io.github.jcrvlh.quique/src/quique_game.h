@@ -21,7 +21,7 @@
 #define QQ_W            368
 #define QQ_H            448
 #define QQ_FP           16           /* subpixels por pixel */
-#define QQ_WALL_Y       84           /* parede de cima (abaixo do placar) */
+#define QQ_WALL_Y       52           /* parede de cima (abaixo da faixa de vidas + pausa) */
 #define QQ_PRENSA_PX    40           /* quanto a parede desce por Prensa */
 #define QQ_PADDLE_Y     408          /* topo da raquete */
 #define QQ_PADDLE_H     14

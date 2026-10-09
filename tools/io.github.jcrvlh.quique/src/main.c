@@ -43,7 +43,17 @@
 #define PICK_ARM_MS     700    /* cartas ignoram toque logo que abrem */
 #define RESUME_MS       800
 #define TOAST_MS        900
+#define TOAST_ABOVE     72     /* aviso: px acima da raquete */
 #define CARD_GAP        10
+#define CARD_TOP        78     /* título + montagem em cima das cartas */
+#define BAND_H          (QQ_WALL_Y - 4)   /* faixa do topo: vidas + pausa */
+#define PAUSE_BTN       44     /* visual; com a área estendida passa de 56 */
+#define LIFE_D          10
+#define MAX_PIPS        10     /* cargas na raquete: 6 cortadas + 4 freios */
+#define PIP_D           6
+#define LIST_ROWS       12     /* cartas listadas na pausa */
+#define WM_COLOR        0x2A2925   /* placar-marca d'água: papel a ~15% sobre o preto */
+#define WM_HALF_H       60     /* meia altura da linha do display_120 */
 
 #define K_SENS  "qq_sens"
 #define K_DIR   "qq_dir"
@@ -66,7 +76,7 @@ static const char RULES[] =
     "(+) e um ruim (-), e os efeitos se acumulam at\xC3\xA9 o fim.\n\n"
     "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
     "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
-    "6. Toque no placar, no topo, pra pausar.\n\n"
+    "6. O bot\xC3\xA3o no canto de cima pausa e mostra as suas cartas ativas.\n\n"
     "A raquete foge pro lado errado? No AJUSTE, mude a DIRE\xC3\x87\xC3\x83O.";
 
 typedef enum { A_OFF = 0, A_CALIB, A_PLAY, A_PICK, A_PAUSE, A_RESUME, A_OVER } arena_state_t;
@@ -97,18 +107,21 @@ static char s_fx_buf[160];
 /* JOGO (parado) */
 static lv_obj_t *s_idle_best, *s_idle_top;
 
-/* arena */
-static lv_obj_t *s_arena, *s_hud_tap, *s_score_lbl, *s_lives_lbl, *s_fx_lbl;
+/* arena: a mesa é a tela. Em cima, só as vidas (pontinhos) e o botão de
+ * pausa; o placar é uma marca d'água atrás da bola; as cargas de
+ * SACODE/FREIO são pontinhos na raquete; as cartas ficam na pausa. */
+static lv_obj_t *s_arena, *s_pause_btn, *s_life[QQ_MAX_LIVES], *s_watermark;
 static lv_obj_t *s_wall, *s_fog, *s_portal[2], *s_shield;
-static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N];
+static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N], *s_pip[MAX_PIPS];
 static lv_obj_t *s_toast;
 
 /* escolha de carta */
-static lv_obj_t *s_pick, *s_pick_title, *s_card[QQ_MAX_OFFER];
+static lv_obj_t *s_pick, *s_pick_title, *s_pick_build, *s_card[QQ_MAX_OFFER];
 static lv_obj_t *s_card_name[QQ_MAX_OFFER], *s_card_bon[QQ_MAX_OFFER], *s_card_onu[QQ_MAX_OFFER];
 
-/* pausa */
-static lv_obj_t *s_pause;
+/* pausa = a montagem: uma linha (nome, +, -) por carta ativa */
+static lv_obj_t *s_pause, *s_pause_more;
+static lv_obj_t *s_row_name[LIST_ROWS], *s_row_bon[LIST_ROWS], *s_row_onu[LIST_ROWS];
 
 /* fim */
 static lv_obj_t *s_over, *s_over_score, *s_over_caption, *s_over_fx;
@@ -118,13 +131,12 @@ static lv_timer_t *s_frame_timer, *s_step_timer, *s_toast_timer;
 static void (*s_step_fn)(void);
 
 /* cache do que já está desenhado (evita invalidar a tela à toa) */
-static int32_t s_drawn_score = -1, s_drawn_lives = -1, s_drawn_nhist = -1;
-static int32_t s_drawn_charges = -1, s_drawn_shield = -1;
+static int32_t s_drawn_score = -1, s_drawn_lives = -1, s_drawn_charges = -1;
 static int32_t s_drawn_wy = -1, s_drawn_fy = -1, s_drawn_pw = -1, s_drawn_r = -1;
 
 static void reset_drawn(void)
 {
-    s_drawn_score = s_drawn_lives = s_drawn_nhist = s_drawn_charges = s_drawn_shield = -1;
+    s_drawn_score = s_drawn_lives = s_drawn_charges = -1;
     s_drawn_wy = s_drawn_fy = s_drawn_pw = s_drawn_r = -1;
 }
 
@@ -248,43 +260,55 @@ static void toast_hide_cb(lv_timer_t *t)
     show(s_toast, false);
 }
 
-/* aviso curto no meio da mesa ("+1 VIDA", "FÊNIX!"); ms = 0 fica até trocar */
-static void toast(const char *txt, uint32_t ms)
+/* aviso curto no meio da mesa ("VAI!", "FÊNIX!", nome da carta pega);
+ * ms = 0 fica até trocar. `muted` = cinza, pra não competir com a bola. */
+static void toast_col(const char *txt, uint32_t ms, bool muted)
 {
     lv_label_set_text(s_toast, txt);
-    lv_obj_align(s_toast, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_set_style_text_color(s_toast, lv_color_hex(muted ? KIT_COLOR_TEXT_MUTED : KIT_COLOR_TEXT), 0);
+    /* logo acima da raquete: é onde o olho está, e não briga com o placar */
+    lv_obj_align(s_toast, LV_ALIGN_TOP_MID, 0, QQ_PADDLE_Y - TOAST_ABOVE);
     show(s_toast, true);
     kill_timer(&s_toast_timer);
     if (ms) s_toast_timer = lv_timer_create(toast_hide_cb, ms, NULL);
 }
 
+static void toast(const char *txt, uint32_t ms) { toast_col(txt, ms, false); }
+
 static void paint_hud(void)
 {
     const qq_game_t *g = &s_g;
+    bool dark = g->blackout_t > 0;
+    show(s_watermark, !dark);
     if (g->score != s_drawn_score) {
-        lv_label_set_text_fmt(s_score_lbl, "%d", (int)g->score);
+        lv_label_set_text_fmt(s_watermark, "%d", (int)g->score);
         s_drawn_score = g->score;
     }
-    int32_t charges = g->smash_charges * 16 + g->slow_charges;
-    if (g->lives != s_drawn_lives || g->shield != s_drawn_shield) {
-        if (g->shield > 0) lv_label_set_text_fmt(s_lives_lbl, "VIDAS %d  ESCUDO %d", g->lives, g->shield);
-        else               lv_label_set_text_fmt(s_lives_lbl, "VIDAS %d", g->lives);
+    if (g->lives != s_drawn_lives) {
+        for (int i = 0; i < QQ_MAX_LIVES; i++) show(s_life[i], i < g->lives);
         s_drawn_lives = g->lives;
-        s_drawn_shield = g->shield;
     }
-    if (g->nhist != s_drawn_nhist || charges != s_drawn_charges) {
-        /* cargas primeiro: é o que muda no meio da partida e não pode cortar */
-        int len = 0;
-        s_fx_buf[0] = 0;
-        if (g->smash_charges)
-            len += snprintf(s_fx_buf + len, sizeof s_fx_buf - (size_t)len, "CORTADA %d \xC2\xB7 ", g->smash_charges);
-        if (g->slow_charges)
-            len += snprintf(s_fx_buf + len, sizeof s_fx_buf - (size_t)len, "FREIO %d \xC2\xB7 ", g->slow_charges);
-        qq_fx_text(g, s_fx_buf + len, (int)sizeof s_fx_buf - len);
-        if (s_fx_buf[len] == 0 && len >= 4) s_fx_buf[len - 4] = 0;   /* tira o " · " sobrando */
-        lv_label_set_text(s_fx_lbl, s_fx_buf);
-        s_drawn_nhist = g->nhist;
+}
+
+/* cargas de SACODE (escuras) e FREIO (claras) como furinhos na raquete */
+static void paint_pips(const int32_t *lp, int32_t pw, bool dark)
+{
+    const qq_game_t *g = &s_g;
+    int n = g->smash_charges + g->slow_charges;
+    if (n > MAX_PIPS) n = MAX_PIPS;
+    int fit = (pw - 8) / (PIP_D + 4);
+    if (n > fit) n = fit;
+    if (dark) n = 0;
+    int32_t charges = g->smash_charges * 16 + g->slow_charges;
+    if (charges != s_drawn_charges) {
+        for (int i = 0; i < MAX_PIPS; i++)
+            lv_obj_set_style_bg_color(s_pip[i], lv_color_hex(i < g->smash_charges ? KIT_COLOR_BG : KIT_COLOR_TEXT), 0);
         s_drawn_charges = charges;
+    }
+    int32_t x0 = lp[0] + (pw - (n * (PIP_D + 4) - 4)) / 2;
+    for (int i = 0; i < MAX_PIPS; i++) {
+        show(s_pip[i], i < n);
+        if (i < n) lv_obj_set_pos(s_pip[i], x0 + i * (PIP_D + 4), QQ_PADDLE_Y + (QQ_PADDLE_H - PIP_D) / 2);
     }
 }
 
@@ -307,6 +331,7 @@ static void paint_field(void)
         if (fy > wy) set_rect(s_fog, 0, wy, W, fy - wy);
         set_rect(s_portal[0], 0, wy, 4, QQ_PADDLE_Y - wy);
         set_rect(s_portal[1], W - 4, wy, 4, QQ_PADDLE_Y - wy);
+        lv_obj_align(s_watermark, LV_ALIGN_TOP_MID, 0, (wy + QQ_PADDLE_Y) / 2 - WM_HALF_H);
         s_drawn_wy = wy;
         s_drawn_fy = fy;
     }
@@ -327,6 +352,7 @@ static void paint_field(void)
         show(s_paddle[k], on);
         if (on) lv_obj_set_pos(s_paddle[k], lp[k], QQ_PADDLE_Y);
     }
+    paint_pips(lp, pw, dark);
 
     int32_t r = qq_ball_r(g);
     if (r != s_drawn_r) {
@@ -414,13 +440,10 @@ static void begin_match(void)
     show(s_over, false);
     show(s_pick, false);
     show(s_pause, false);
-    memset(&s_g, 0, sizeof s_g);
-    s_g.lives = QQ_START_LIVES;
-    s_g.paddle = (W / 2) * QQ_FP;
+    /* mesa já montada (bola na raquete) enquanto calibra; calib_done recomeça */
+    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
     reset_drawn();
-    for (int i = 0; i < QQ_MAX_BALLS; i++) show(s_ball[i], false);
-    for (int i = 0; i < QQ_PREVIEW_N; i++) show(s_dot[i], false);
-    paint_hud();
+    paint_field();
     toast("SEGURE O KIT RETO", 0);
     kit_ui_keep_awake(true);
     step_after(CALIB_MS, calib_done);
@@ -437,10 +460,13 @@ static void open_pick(void)
     kit_ui_sfx(KIT_SFX_REVEAL);
 
     int n = s_g.noffer;
-    int top = 56;
-    int avail = H - top - 16;
+    int top = CARD_TOP;
+    int avail = H - top - 12;
     int ch = (avail - (n - 1) * CARD_GAP) / (n > 0 ? n : 1);
     lv_label_set_text_fmt(s_pick_title, "ESCOLHA UMA CARTA \xC2\xB7 %d", (int)s_g.hits);
+    /* a montagem aparece aqui, onde ela decide a escolha */
+    qq_fx_text(&s_g, s_fx_buf, sizeof s_fx_buf);
+    lv_label_set_text(s_pick_build, s_fx_buf[0] ? s_fx_buf : "SEM CARTAS AINDA");
     for (int i = 0; i < QQ_MAX_OFFER; i++) {
         bool on = i < n;
         show(s_card[i], on);
@@ -463,28 +489,60 @@ static void card_cb(lv_event_t *e)
     int i = (int)(intptr_t)lv_event_get_user_data(e);
     if (s_st != A_PICK || !s_pick_armed || i >= s_g.noffer) return;
     kit_ui_confirm();
-    int32_t lives = s_g.lives;
+    const char *name = QQ_CARDS[s_g.offer[i]].name;
     qq_take_offer(&s_g, i);
     show(s_pick, false);
     s_st = A_PLAY;
-    if (s_g.lives > lives) {
-        char b[16];
-        snprintf(b, sizeof b, "+%d VIDA%s", (int)(s_g.lives - lives), s_g.lives - lives > 1 ? "S" : "");
-        toast(b, TOAST_MS);
-    } else if (s_g.lives < lives) {
-        toast("1 VIDA", TOAST_MS);
-    }
+    /* o nome fica apagado na mesa enquanto a bola espera na raquete: é o
+     * lembrete das cartas que não se veem (Espelho, Mola, Prumo...) */
+    toast_col(name, TOAST_MS, true);
     paint_field();
 }
 
 /* --- pausa ----------------------------------------------------------------- */
 
-static void hud_tap_cb(lv_event_t *e)
+/* lista da montagem: uma linha por carta ativa, só os lados que valem */
+static void paint_pause_list(void)
+{
+    const qq_game_t *g = &s_g;
+    int row = 0, extra = 0;
+    for (int c = 0; c < QC_COUNT; c++) {
+        int nb = g->bon[c], no = g->onu[c];
+        if (!nb && !no) continue;
+        if (row >= LIST_ROWS) { extra++; continue; }
+        int n = nb > no ? nb : no;
+        if (n > 1) lv_label_set_text_fmt(s_row_name[row], "%s x%d", QQ_CARDS[c].name, n);
+        else       lv_label_set_text(s_row_name[row], QQ_CARDS[c].name);
+        lv_label_set_text_fmt(s_row_bon[row], "+ %s", QQ_CARDS[c].bonus);
+        lv_label_set_text_fmt(s_row_onu[row], "- %s", QQ_CARDS[c].onus);
+        show(s_row_name[row], true);
+        show(s_row_bon[row], nb > 0);
+        show(s_row_onu[row], no > 0);
+        row++;
+    }
+    if (row == 0) {
+        lv_label_set_text(s_row_name[0], "NENHUMA CARTA AINDA");
+        show(s_row_name[0], true);
+        show(s_row_bon[0], false);
+        show(s_row_onu[0], false);
+        row = 1;
+    }
+    for (int r = row; r < LIST_ROWS; r++) {
+        show(s_row_name[r], false);
+        show(s_row_bon[r], false);
+        show(s_row_onu[r], false);
+    }
+    if (extra) lv_label_set_text_fmt(s_pause_more, "+ %d CARTA%s", extra, extra > 1 ? "S" : "");
+    show(s_pause_more, extra > 0);
+}
+
+static void pause_btn_cb(lv_event_t *e)
 {
     (void)e;
     if (s_st != A_PLAY) return;
     kit_ui_click();
     s_st = A_PAUSE;
+    paint_pause_list();
     show(s_pause, true);
 }
 
@@ -713,8 +771,13 @@ static void build_pick(void)
 {
     s_pick = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
     lv_obj_set_pos(s_pick, 0, 0);
-    s_pick_title = kit_ui_label(s_pick, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 24);
+    s_pick_title = kit_ui_label(s_pick, "", KIT_COLOR_TEXT, &kit_mono_16, 2);
+    lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 20);
+    /* a montagem atual, numa linha: é a hora em que ela importa */
+    s_pick_build = kit_ui_label(s_pick, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    lv_label_set_long_mode(s_pick_build, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_pick_build, LV_TEXT_ALIGN_CENTER, 0);
+    set_rect(s_pick_build, KIT_UI_PAD, 46, KIT_UI_CONTENT, 22);
     for (int i = 0; i < QQ_MAX_OFFER; i++) {
         lv_obj_t *c = kit_ui_rect(s_pick, KIT_UI_CONTENT, 100, KIT_COLOR_SURFACE, 18);
         lv_obj_set_style_pad_left(c, 16, 0);
@@ -740,16 +803,37 @@ static void build_pause(void)
 {
     s_pause = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
     lv_obj_set_pos(s_pause, 0, 0);
-    lv_obj_set_style_bg_opa(s_pause, LV_OPA_90, 0);
-    lv_obj_t *col = kit_ui_box(s_pause);
-    lv_obj_set_size(col, KIT_UI_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 16, 0);
-    lv_obj_center(col);
-    kit_ui_label(col, "PAUSA", KIT_COLOR_TEXT, &kit_mono_26, 3);
-    kit_ui_label(col, "O GIROSC\xC3\x93PIO CONTINUA LENDO:", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
-    kit_ui_label(col, "VOLTE O KIT PRO CENTRO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
-    pill(col, KIT_UI_CONTENT, Q_ACCENT, kit_ui_on(Q_ACCENT), "CONTINUAR", pause_continue_cb);
-    pill(col, KIT_UI_CONTENT, KIT_COLOR_BG, KIT_COLOR_TEXT, "ENCERRAR", pause_end_cb);
+    lv_obj_t *t = kit_ui_label(s_pause, "PAUSA", KIT_COLOR_TEXT, &kit_mono_26, 3);
+    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_t *hint = kit_ui_label(s_pause, "CENTRALIZE O KIT ANTES DE VOLTAR",
+                                  KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 52);
+
+    /* a montagem: rola se não couber */
+    int top = 82, bottom = H - KIT_UI_BTN_H - 2 * KIT_UI_BTN_MARGIN;
+    lv_obj_t *list = lv_obj_create(s_pause);
+    lv_obj_remove_style_all(list);
+    set_rect(list, KIT_UI_PAD, top, KIT_UI_CONTENT, bottom - top);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(list, 2, 0);
+    lv_obj_set_style_pad_bottom(list, 8, 0);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
+    for (int r = 0; r < LIST_ROWS; r++) {
+        s_row_name[r] = kit_ui_label(list, "", KIT_COLOR_TEXT, &kit_mono_20, 2);
+        if (r) lv_obj_set_style_pad_top(s_row_name[r], 10, 0);
+        s_row_bon[r] = kit_ui_label(list, "", KIT_COLOR_GREEN, &kit_sans_22, 0);
+        s_row_onu[r] = kit_ui_label(list, "", KIT_COLOR_RED, &kit_sans_22, 0);
+    }
+    s_pause_more = kit_ui_label(list, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    lv_obj_set_style_pad_top(s_pause_more, 10, 0);
+
+    lv_obj_t *row = kit_ui_box(s_pause);
+    lv_obj_set_size(row, KIT_UI_CONTENT, KIT_UI_BTN_H);
+    kit_ui_flex(row, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 12);
+    lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -KIT_UI_BTN_MARGIN);
+    pill(row, (KIT_UI_CONTENT - 12) / 2, Q_ACCENT, kit_ui_on(Q_ACCENT), "CONTINUAR", pause_continue_cb);
+    pill(row, (KIT_UI_CONTENT - 12) / 2, KIT_COLOR_BG, KIT_COLOR_TEXT, "ENCERRAR", pause_end_cb);
     show(s_pause, false);
 }
 
@@ -782,18 +866,33 @@ static void build_arena(void)
     lv_obj_set_pos(s_arena, 0, 0);
     lv_obj_add_flag(s_arena, LV_OBJ_FLAG_CLICKABLE);
 
-    /* placar (toque = pausa) */
-    s_hud_tap = kit_ui_box(s_arena);
-    set_rect(s_hud_tap, 0, 0, W, QQ_WALL_Y - 4);
-    lv_obj_add_flag(s_hud_tap, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_hud_tap, hud_tap_cb, LV_EVENT_CLICKED, NULL);
-    s_score_lbl = kit_ui_label(s_hud_tap, "0", KIT_COLOR_TEXT, &kit_mono_26, 2);
-    lv_obj_set_pos(s_score_lbl, KIT_UI_PAD, 10);
-    s_lives_lbl = kit_ui_label(s_hud_tap, "", KIT_COLOR_TEXT, &kit_mono_16, 2);
-    lv_obj_align(s_lives_lbl, LV_ALIGN_TOP_RIGHT, -KIT_UI_PAD, 18);
-    s_fx_lbl = kit_ui_label(s_hud_tap, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
-    lv_label_set_long_mode(s_fx_lbl, LV_LABEL_LONG_DOT);
-    set_rect(s_fx_lbl, KIT_UI_PAD, 40, KIT_UI_CONTENT, 40);   /* 2 linhas */
+    /* faixa do topo: vidas à esquerda, pausa à direita — e mais nada */
+    lv_obj_t *lives = kit_ui_box(s_arena);
+    lv_obj_set_size(lives, LV_SIZE_CONTENT, LIFE_D);
+    kit_ui_flex(lives, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 6);
+    lv_obj_set_pos(lives, KIT_UI_PAD + 4, (BAND_H - LIFE_D) / 2);
+    decor(lives);
+    for (int i = 0; i < QQ_MAX_LIVES; i++) {
+        s_life[i] = kit_ui_rect(lives, LIFE_D, LIFE_D, KIT_COLOR_TEXT, LIFE_D / 2);
+        decor(s_life[i]);
+    }
+
+    s_pause_btn = kit_ui_rect(s_arena, PAUSE_BTN, PAUSE_BTN, KIT_COLOR_BG, PAUSE_BTN / 2);
+    lv_obj_set_style_border_width(s_pause_btn, 2, 0);
+    lv_obj_set_style_border_color(s_pause_btn, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+    lv_obj_set_pos(s_pause_btn, W - KIT_UI_PAD - PAUSE_BTN, (BAND_H - PAUSE_BTN) / 2);
+    kit_ui_tap(s_pause_btn, pause_btn_cb, 0);
+    lv_obj_set_ext_click_area(s_pause_btn, 10);
+    lv_obj_set_style_bg_color(s_pause_btn, lv_color_hex(KIT_COLOR_SURFACE_ALT), LV_STATE_PRESSED);
+    for (int k = 0; k < 2; k++) {   /* ícone ‖ */
+        lv_obj_t *bar = kit_ui_rect(s_pause_btn, 5, 16, KIT_COLOR_TEXT, 1);
+        lv_obj_align(bar, LV_ALIGN_CENTER, k ? 5 : -5, 0);
+        decor(bar);
+    }
+
+    /* placar: marca d'água atrás de tudo da mesa */
+    s_watermark = kit_ui_label(s_arena, "0", WM_COLOR, &kit_display_120, 0);
+    decor(s_watermark);
 
     s_wall = kit_ui_rect(s_arena, W, 4, KIT_COLOR_TEXT, 0);
     decor(s_wall);
@@ -813,6 +912,11 @@ static void build_arena(void)
         s_paddle[k] = kit_ui_rect(s_arena, QQ_PADDLE_W, QQ_PADDLE_H, Q_ACCENT, QQ_PADDLE_H / 2);
         decor(s_paddle[k]);
     }
+    for (int i = 0; i < MAX_PIPS; i++) {
+        s_pip[i] = kit_ui_rect(s_arena, PIP_D, PIP_D, KIT_COLOR_BG, PIP_D / 2);
+        decor(s_pip[i]);
+        show(s_pip[i], false);
+    }
     for (int i = 0; i < QQ_MAX_BALLS; i++) {
         s_ball[i] = kit_ui_rect(s_arena, 2 * QQ_BALL_R, 2 * QQ_BALL_R,
                                 i ? KIT_COLOR_YELLOW : KIT_COLOR_TEXT, QQ_BALL_R);
@@ -823,6 +927,7 @@ static void build_arena(void)
     decor(s_fog);
 
     s_toast = kit_ui_label(s_arena, "", KIT_COLOR_TEXT, &kit_mono_26, 3);
+    lv_obj_set_style_text_align(s_toast, LV_TEXT_ALIGN_CENTER, 0);
     decor(s_toast);
     show(s_toast, false);
 
@@ -902,12 +1007,17 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_dir_chips = (kit_ui_chips_t){0};
     s_action = (kit_ui_action_t){0};
     s_idle_best = s_idle_top = NULL;
-    s_arena = s_hud_tap = s_score_lbl = s_lives_lbl = s_fx_lbl = NULL;
+    s_arena = s_pause_btn = s_watermark = NULL;
+    memset(s_life, 0, sizeof s_life);
+    memset(s_pip, 0, sizeof s_pip);
     s_wall = s_fog = s_shield = s_toast = NULL;
     s_portal[0] = s_portal[1] = s_paddle[0] = s_paddle[1] = NULL;
     memset(s_ball, 0, sizeof s_ball);
     memset(s_dot, 0, sizeof s_dot);
-    s_pick = s_pick_title = s_pause = NULL;
+    s_pick = s_pick_title = s_pick_build = s_pause = s_pause_more = NULL;
+    memset(s_row_name, 0, sizeof s_row_name);
+    memset(s_row_bon, 0, sizeof s_row_bon);
+    memset(s_row_onu, 0, sizeof s_row_onu);
     memset(s_card, 0, sizeof s_card);
     memset(s_card_name, 0, sizeof s_card_name);
     memset(s_card_bon, 0, sizeof s_card_bon);

@@ -6,6 +6,17 @@ Ping-pong **sozinho** contra a parede, controlado **inclinando o KIT**. A cada
 é uma gambiarra de escolhas suas. Três vidas; acabou, o placar entra (ou não)
 no top-5.
 
+## A mesa
+
+A tela de jogo é só a mesa. No topo, numa faixa fina, ficam só as **vidas**
+(pontinhos) e o **botão de pausa**. O resto se mostra dentro da mesa:
+
+- **Placar:** número grande em marca d'água no centro da mesa, atrás da bola.
+- **Cargas** de SACODE (furinhos escuros) e FREIO (claros): pontinhos na
+  própria raquete.
+- **Escudo:** linha azul embaixo da raquete. **Portais:** laterais azuis.
+  **Neblina, Prensa, Gêmea, Gêmeas, Cometa:** aparecem na própria mesa.
+
 ## Páginas
 
 ```
@@ -37,8 +48,10 @@ Abre sempre no **JOGO**.
    (4 com a Ganância). Os toques são ignorados nos primeiros 0,7 s, pra
    ninguém escolher sem querer. Não dá pra pular. Depois da escolha, a bola
    volta parada na raquete.
-7. **Pausa:** toque no placar, no topo. **CONTINUAR** dá 0,8 s ("VAI!") antes
-   de soltar a bola; **ENCERRAR** vai pro fim com o placar valendo.
+7. **Pausa:** o botão no canto de cima. A pausa mostra a **montagem**: cada
+   carta ativa, com o + e o - que ainda valem (a Faxina pode ter tirado um
+   lado). **CONTINUAR** dá 0,8 s ("VAI!") antes de soltar a bola;
+   **ENCERRAR** vai pro fim com o placar valendo.
 8. **Fim:** placar grande, a posição no top-5 (ou o recorde) e **DE NOVO** /
    **SAIR**.
 
@@ -55,8 +68,11 @@ Abre sempre no **JOGO**.
   vidas pro Exorcismo.
 - **Bônus de efeito imediato** (vidas, escudo, cargas) não são devolvidos se a
   Faxina tirar o bônus da carta depois.
-- A faixa abaixo do placar mostra as cargas (CORTADA / FREIO) e as cartas
-  ativas.
+- As cartas ativas aparecem onde importam: na tela de escolha (uma linha com
+  a montagem atual), na pausa (a lista completa) e no fim. Na volta de uma
+  escolha, o nome da carta pega fica apagado acima da raquete enquanto a bola
+  espera. Isso lembra as cartas que não se veem na mesa (Espelho, Mola,
+  Prumo...).
 
 ## Banco de cartas (29)
 
