@@ -21,6 +21,9 @@ cheias com a própria barra de título (o ◀ fecha a tela): **VERIFICADOR**,
 **NOTAS**, **ARRISCAR** e **RESULTADO**.
 
 - **AJUSTE**
+  - **Modo:** SÓ KIT ou COM FOLHA (ver abaixo). Vale na hora, inclusive no
+    meio da partida: o modo só muda a interface, e os testes continuam. Ao
+    passar pra COM FOLHA, a tela FOLHA abre com o QR.
   - **Regras:** FÁCIL (só regras sobre uma forma ou um par de formas) ou
     DIFÍCIL (inclui contagem, menor/maior, repetição e ordem).
   - **Puzzle:** DO DIA (o mesmo em todo KIT no mesmo dia, semente da data) ou
@@ -32,7 +35,7 @@ cheias com a própria barra de título (o ◀ fecha a tela): **VERIFICADOR**,
     Vem desligada.
   - **Histórico:** jogados, abertos e o melhor placar (rodadas e testes).
   - No meio de uma partida, mudar Regras ou Puzzle só vale no próximo
-    puzzle. Nada se perde por um toque sem querer.
+    puzzle. Nada se perde por um toque sem querer. O Modo é a exceção.
 - **CÓDIGO:** "RODADA n · x/3" e a dica "TESTES ▸", os 3 discos de 104×124
   (o toque avança 1→5; o código trava no 1º teste da rodada), [NOTAS] e
   [NOVA RODADA] com 162×80 cada, e [ARRISCAR] com 336×80.
@@ -53,7 +56,11 @@ ou **NÃO** vermelho, com glifo além da cor.
 ### SÓ KIT ou COM FOLHA
 
 Todo puzzle novo começa com a escolha do modo, com a última escolha já
-marcada. A partida guarda o modo; ao reabrir, ela continua direto.
+marcada. A partida guarda o modo; ao reabrir, ela continua direto. Pra
+trocar no meio da partida, use AJUSTE > MODO. As anotações não migram: o que
+foi escrito na folha fica na folha, e os riscos e a grade do KIT ficam
+guardados no KIT (com Ajuda ligada, as regras contraditas já aparecem como
+AUTO ao voltar pro SÓ KIT).
 
 - **SÓ KIT:** tudo no aparelho, como descrito acima.
 - **COM FOLHA:** o KIT só testa e recebe o palpite. Uma tela **FOLHA** mostra
