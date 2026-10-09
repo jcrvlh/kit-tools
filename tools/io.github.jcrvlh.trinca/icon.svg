@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Trinca — linguagem "Brutalist Bauhaus" do KIT.
+    Três rolos com o mesmo triângulo amarelo na linha: a trinca. Fonte de
+    verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="34"  y="70" width="52" height="100" rx="10" fill="#222226"/>
+  <rect x="94"  y="70" width="52" height="100" rx="10" fill="#222226"/>
+  <rect x="154" y="70" width="52" height="100" rx="10" fill="#222226"/>
+  <polygon points="60,103 78,134 42,134"   fill="#E9B23C"/>
+  <polygon points="120,103 138,134 102,134" fill="#E9B23C"/>
+  <polygon points="180,103 198,134 162,134" fill="#E9B23C"/>
+</svg>
