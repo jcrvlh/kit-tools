@@ -105,7 +105,8 @@ static const char RULES[] =
     "A tabela de todos os testes e uma grade pra riscar números.\n\n"
     "COM FOLHA\n"
     "Ao começar um puzzle, escolha SÓ KIT ou COM FOLHA. Com folha, aponte a câmera pro QR: dá pra imprimir "
-    "ou anotar no celular, e o KIT só testa e recebe o palpite. O botão FOLHA reabre o QR.\n\n"
+    "ou anotar no celular, e o KIT só testa e recebe o palpite. O botão FOLHA reabre o QR. "
+    "Pra trocar no meio da partida: AJUSTE > MODO.\n\n"
     "AJUDA\n"
     "No AJUSTE. Risca sozinho as regras que algum teste já contradiz e confere o palpite contra os seus testes. "
     "Não olha a resposta.\n\n"
@@ -115,12 +116,13 @@ static const char RULES[] =
 static const char *const DIFF_LABELS[] = { "FÁCIL", "DIFÍCIL" };
 static const char *const MODE_LABELS[] = { "DO DIA", "LIVRE" };
 static const char *const ASSIST_LABELS[] = { "NÃO", "SIM" };
+static const char *const PAPER_LABELS[] = { "SÓ KIT", "COM FOLHA" };
 
 /* ------------------------------------------------------------- widgets */
 
 static lv_obj_t *s_screen;
 static kit_ui_shell_t s_shell;
-static kit_ui_chips_t s_diff_chips, s_mode_chips, s_assist_chips;
+static kit_ui_chips_t s_diff_chips, s_mode_chips, s_assist_chips, s_paper_chips;
 
 /* JOGO */
 static lv_obj_t *s_st_round, *s_st_tests;
@@ -737,6 +739,19 @@ static void mode_cb(int idx, void *u)
     if (!in_progress()) start_new_puzzle(); else refresh_ajuste();
 }
 
+/* o modo só muda a interface (NOTAS/FOLHA, regras riscáveis, Ajuda): vale na
+ * hora, inclusive no meio da partida. Testes e notas do KIT ficam como estão. */
+static void paper_cb(int idx, void *u)
+{
+    (void)u;
+    s_paper = s_paper_pref = (uint8_t)idx;
+    set_i32("gz_paper", idx);
+    save_game();
+    refresh_jogo();
+    refresh_ajuste();
+    if (s_paper) open_ov(OV_QR);   /* quem passa pra folha precisa do QR */
+}
+
 static void assist_cb(int idx, void *u)
 {
     (void)u;
@@ -772,11 +787,12 @@ static void refresh_ajuste(void)
 {
     if (!s_pend) return;
     paint_mode_chips();
+    kit_ui_chips_select(&s_paper_chips, s_paper);
     bool show = true;
     if (in_progress()) {
         bool changed = s_next_diff != s_diff || s_next_mode != s_mode;
         lv_label_set_text(s_pend_lbl, changed ? "MUDANÇA SALVA. VALE NO PRÓXIMO PUZZLE."
-                                              : "PARTIDA EM ANDAMENTO. REGRAS E PUZZLE VALEM NO PRÓXIMO.");
+                                              : "PARTIDA EM ANDAMENTO. O MODO MUDA NA HORA; REGRAS E PUZZLE, NO PRÓXIMO.");
         uint32_t c = changed ? T_ACCENT : KIT_COLOR_TEXT;
         lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(c), 0);
         lv_obj_set_style_border_color(s_pend, lv_color_hex(changed ? T_ACCENT : KIT_COLOR_LINE), 0);
@@ -834,6 +850,8 @@ static void build_ajuste(lv_obj_t *tile)
     lv_label_set_long_mode(s_pend_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_pend_lbl, lv_pct(100));
 
+    section(p, "MODO");
+    kit_ui_chips(&s_paper_chips, p, PAPER_LABELS, 2, s_paper, T_ACCENT, paper_cb, NULL);
     section(p, "REGRAS");
     kit_ui_chips(&s_diff_chips, p, DIFF_LABELS, 2, s_next_diff, T_ACCENT, diff_cb, NULL);
     section(p, "PUZZLE");
@@ -871,7 +889,7 @@ static void ov_back_cb(lv_event_t *e)
     (void)e;
     kit_ui_sfx(KIT_SFX_BACK);
     if (s_ov_kind == OV_RESULT) { kit_ui_exit(); return; }
-    if (s_ov_kind == OV_MODE && s_paper_pref) { s_paper = 1; save_game(); open_ov(OV_QR); return; }
+    if (s_ov_kind == OV_MODE && s_paper_pref) { s_paper = 1; save_game(); refresh_ajuste(); open_ov(OV_QR); return; }
     close_ov();
 }
 
@@ -1298,6 +1316,7 @@ static void mode_pick_cb(lv_event_t *e)
     s_paper = s_paper_pref = (uint8_t)paper;
     set_i32("gz_paper", paper);
     save_game();
+    refresh_ajuste();
     kit_ui_click();
     if (paper) open_ov(OV_QR);
     else close_ov();
@@ -1748,7 +1767,7 @@ void tool_destroy(void)
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
 
     s_shell = (kit_ui_shell_t){0};
-    s_diff_chips = s_mode_chips = s_assist_chips = (kit_ui_chips_t){0};
+    s_diff_chips = s_mode_chips = s_assist_chips = s_paper_chips = (kit_ui_chips_t){0};
     s_st_round = s_st_tests = s_cards_box = s_btn_round = s_btn_notes_lbl = NULL;
     memset(s_disc, 0, sizeof s_disc);
     memset(s_disc_lbl, 0, sizeof s_disc_lbl);
