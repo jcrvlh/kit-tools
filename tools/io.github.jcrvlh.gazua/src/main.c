@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief GAZUA — dedução solo inspirada no Turing Machine.
+ * @brief GAZUA — jogo de dedução solo: o código, os verificadores e as regras secretas.
  *
  * Um código de 3 números (triângulo, quadrado, círculo; 1 a 5) e 4
  * verificadores, cada um com uma regra secreta. Monte um código, teste até 3
@@ -64,12 +64,19 @@ static bool     s_over;
 
 /* ajustes (valem pro PRÓXIMO puzzle) e histórico */
 static uint8_t  s_next_diff, s_next_mode, s_assist;
+static uint8_t  s_paper;           /* 1 = modo COM FOLHA (deste puzzle) */
+static uint8_t  s_paper_pref;      /* a última escolha, pré-selecionada no próximo */
 static int32_t  s_played, s_won, s_best_r, s_best_t, s_daily_done;
 static bool     s_dirty;
 
 #ifndef KIT_SDK_STUBS
 
 #define T_ACCENT   KIT_COLOR_YELLOW
+
+/* folha web (jcrvlh/kit, web-installer/gazua.html). A URL leva só as cartas
+ * (índices em GZ_CARDS — a ordem da tabela é contrato com a página), o dia e
+ * a dificuldade; nunca a regra secreta nem o código. */
+#define FOLHA_URL  "https://jcrvlh.github.io/kit/gazua.html?v="
 
 /* alvos de toque: KIT_TOUCH_TARGET_COMFORTABLE (80 px) em tudo que se toca no jogo */
 #define TOUCH_H       KIT_TOUCH_TARGET_COMFORTABLE
@@ -96,6 +103,9 @@ static const char RULES[] =
     "Nenhum verificador sobra e a solução é uma só. Se uma regra parece não servir pra nada, ela não é a regra certa.\n\n"
     "NOTAS\n"
     "A tabela de todos os testes e uma grade pra riscar números.\n\n"
+    "COM FOLHA\n"
+    "Ao começar um puzzle, escolha SÓ KIT ou COM FOLHA. Com folha, aponte a câmera pro QR: dá pra imprimir "
+    "ou anotar no celular, e o KIT só testa e recebe o palpite. O botão FOLHA reabre o QR.\n\n"
     "AJUDA\n"
     "No AJUSTE. Risca sozinho as regras que algum teste já contradiz e confere o palpite contra os seus testes. "
     "Não olha a resposta.\n\n"
@@ -117,14 +127,15 @@ static lv_obj_t *s_st_round, *s_st_tests;
 static lv_obj_t *s_disc[GZ_SHAPES], *s_disc_lbl[GZ_SHAPES];
 static lv_obj_t *s_cards_box;
 static lv_obj_t *s_card_hole[GZ_VERIFIERS], *s_card_hole_lbl[GZ_VERIFIERS];
-static lv_obj_t *s_btn_round;
+static lv_obj_t *s_btn_round, *s_btn_notes_lbl;
 
 /* AJUSTE */
 static lv_obj_t *s_pend, *s_pend_lbl;
 static lv_obj_t *s_hist_val[3];
 
 /* overlay */
-enum { OV_NONE = 0, OV_VER, OV_NOTES, OV_GUESS, OV_RESULT };
+enum { OV_NONE = 0, OV_VER, OV_NOTES, OV_GUESS, OV_RESULT, OV_MODE, OV_QR };
+static kit_ui_qr_t s_qr;
 static lv_obj_t *s_ov, *s_ov_title, *s_ov_body;
 static int s_ov_kind;
 static int s_ver;                  /* verificador aberto */
@@ -217,6 +228,7 @@ static bool opt_contradicted(int v, int o)
 
 static bool opt_struck(int v, int o)
 {
+    if (s_paper) return false;
     return ((s_strike[v] >> o) & 1) || (s_assist && opt_contradicted(v, o));
 }
 
@@ -252,13 +264,14 @@ static void unpack_grid(int32_t v)
         }
 }
 
-/* "1;semente;dif;modo;dia;fim;" + 7 dígitos por rodada (código + 4 resultados) */
+/* "2;semente;dif;modo;dia;fim;folha;" + 7 dígitos por rodada (código + 4
+ * resultados). O formato 1 (sem o campo folha) ainda é lido. */
 static void save_game(void)
 {
     if (!s_api || !s_api->storage) return;
     char buf[400];
-    int n = snprintf(buf, sizeof buf, "1;%u;%d;%d;%d;%d;", (unsigned)s_seed, s_diff, s_mode,
-                     (int)s_day, s_over ? 1 : 0);
+    int n = snprintf(buf, sizeof buf, "2;%u;%d;%d;%d;%d;%d;", (unsigned)s_seed, s_diff, s_mode,
+                     (int)s_day, s_over ? 1 : 0, s_paper ? 1 : 0);
     for (int r = 0; r < s_nr && n + 8 < (int)sizeof buf; r++) {
         round_t *R = &s_rounds[r];
         buf[n++] = (char)('0' + R->code[0]);
@@ -296,12 +309,14 @@ static bool load_game(void)
     if (!s_api || !s_api->storage) return false;
     char buf[400];
     buf[0] = '\0';
-    if (s_api->storage->get_str("gz_game", buf, sizeof buf) != KIT_OK || buf[0] != '1' || buf[1] != ';')
+    if (s_api->storage->get_str("gz_game", buf, sizeof buf) != KIT_OK ||
+        (buf[0] != '1' && buf[0] != '2') || buf[1] != ';')
         return false;
     const char *p = buf + 2;
-    int32_t seed, diff, mode, day, over;
+    int32_t seed, diff, mode, day, over, paper = 0;
     if (!parse_num(&p, &seed) || !parse_num(&p, &diff) || !parse_num(&p, &mode) ||
         !parse_num(&p, &day) || !parse_num(&p, &over)) return false;
+    if (buf[0] == '2' && !parse_num(&p, &paper)) return false;
     if (over || diff < 0 || diff > 1 || mode < 0 || mode > 1) return false;
 
     int nr = 0;
@@ -330,6 +345,7 @@ static bool load_game(void)
     s_day = day;
     s_nr = nr;
     s_over = false;
+    s_paper = paper == 1;
     uint32_t st = (uint32_t)get_i32("gz_strike", 0);
     for (int v = 0; v < GZ_VERIFIERS; v++) s_strike[v] = (uint8_t)((st >> (4 * v)) & 15);
     unpack_grid(get_i32("gz_grid", 0));
@@ -346,6 +362,7 @@ static void load_settings(void)
     s_best_r = get_i32("gz_bestr", 0);
     s_best_t = get_i32("gz_bestt", 0);
     s_daily_done = get_i32("gz_dday", 0);
+    s_paper_pref = get_i32("gz_paper", 0) == 1 ? 1 : 0;
 }
 
 /* hoje, como número do dia (0 se o relógio não sabe) */
@@ -380,6 +397,7 @@ static void new_puzzle_state(void)
     memset(s_strike, 0, sizeof s_strike);
     memset(s_grid, 0, sizeof s_grid);
     s_over = false;
+    s_paper = s_paper_pref;
     s_dirty = true;
 }
 
@@ -564,6 +582,7 @@ static void refresh_jogo(void)
     for (int v = 0; v < GZ_VERIFIERS; v++)
         if (s_card_hole[v]) set_mark(s_card_hole[v], s_card_hole_lbl[v], s_rounds[s_nr - 1].res[v]);
     lv_obj_set_style_opa(s_btn_round, (u > 0 && s_nr < MAX_ROUNDS) ? LV_OPA_COVER : LV_OPA_30, 0);
+    if (s_btn_notes_lbl) lv_label_set_text(s_btn_notes_lbl, s_paper ? "FOLHA" : "NOTAS");
 }
 
 static void refresh_ajuste(void);
@@ -589,7 +608,7 @@ static void card_cb(lv_event_t *e)
     open_ov(OV_VER);
 }
 
-static void notes_cb(lv_event_t *e) { (void)e; kit_ui_click(); open_ov(OV_NOTES); }
+static void notes_cb(lv_event_t *e) { (void)e; kit_ui_click(); open_ov(s_paper ? OV_QR : OV_NOTES); }
 
 static void round_cb(lv_event_t *e)
 {
@@ -668,7 +687,7 @@ static void build_codigo(lv_obj_t *tile)
     int half = (KIT_UI_CONTENT - 12) / 2;   /* 162 */
     lv_obj_t *nb = button(tile, half, TOUCH_H, KIT_COLOR_SURFACE, notes_cb, 0);
     lv_obj_set_pos(nb, KIT_UI_PAD, 176);
-    btn_label(nb, "NOTAS", KIT_COLOR_TEXT, &kit_mono_20);
+    s_btn_notes_lbl = btn_label(nb, "NOTAS", KIT_COLOR_TEXT, &kit_mono_20);
 
     s_btn_round = button(tile, half, TOUCH_H, KIT_COLOR_SURFACE, round_cb, 0);
     lv_obj_set_pos(s_btn_round, KIT_UI_PAD + half + 12, 176);
@@ -852,6 +871,7 @@ static void ov_back_cb(lv_event_t *e)
     (void)e;
     kit_ui_sfx(KIT_SFX_BACK);
     if (s_ov_kind == OV_RESULT) { kit_ui_exit(); return; }
+    if (s_ov_kind == OV_MODE && s_paper_pref) { s_paper = 1; save_game(); open_ov(OV_QR); return; }
     close_ov();
 }
 
@@ -936,7 +956,9 @@ static void build_ver(void)
     lv_obj_set_style_pad_bottom(sc, 0, 0);
     for (int o = 0; o < GZ_MAX_OPTS; o++) s_opt_row[o] = NULL;
     for (int o = 0; o < GZ_CARDS[card].nopt; o++) {
-        lv_obj_t *row = button(sc, lv_pct(100), TOUCH_H, KIT_COLOR_SURFACE, opt_cb, o);
+        /* no modo folha as regras são só referência: quem risca é o papel */
+        lv_obj_t *row = s_paper ? deco(kit_ui_rect(sc, lv_pct(100), TOUCH_H, KIT_COLOR_SURFACE, 18))
+                                : button(sc, lv_pct(100), TOUCH_H, KIT_COLOR_SURFACE, opt_cb, o);
         lv_obj_set_style_radius(row, 18, 0);
         lv_obj_set_style_border_color(row, lv_color_hex(KIT_COLOR_LINE), 0);
         lv_obj_set_style_pad_left(row, 16, 0);
@@ -955,7 +977,7 @@ static void build_ver(void)
     if (done || used() >= TESTS_PER_ROUND || s_over) {
         lv_obj_t *w = box(s_ov_body);
         lv_obj_set_size(w, lv_pct(100), TOUCH_H);
-        lv_obj_t *l = kit_ui_label(w, done ? "JÁ TESTADO NESTA RODADA. VEJA EM NOTAS."
+        lv_obj_t *l = kit_ui_label(w, done ? (s_paper ? "JÁ TESTADO NESTA RODADA." : "JÁ TESTADO NESTA RODADA. VEJA EM NOTAS.")
                                            : "3 TESTES POR RODADA. ABRA OUTRA.",
                                    KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
         lv_obj_set_width(l, lv_pct(100));
@@ -1141,7 +1163,7 @@ static void paint_guess(void)
 
     if (!s_gcheck) return;
     lv_obj_clean(s_gcheck);
-    if (!s_assist) { lv_obj_add_flag(s_gcheck, LV_OBJ_FLAG_HIDDEN); return; }
+    if (!s_assist || s_paper) { lv_obj_add_flag(s_gcheck, LV_OBJ_FLAG_HIDDEN); return; }
     lv_obj_remove_flag(s_gcheck, LV_OBJ_FLAG_HIDDEN);
     static gz_obs_t obs[MAX_ROUNDS * GZ_VERIFIERS];
     int n = collect_obs(obs);
@@ -1265,7 +1287,62 @@ static void again_cb(lv_event_t *e)
     (void)e;
     kit_ui_confirm();
     start_new_puzzle();
-    close_ov();
+    open_ov(OV_MODE);
+}
+
+/* ......................................................... MODO / FOLHA */
+
+static void mode_pick_cb(lv_event_t *e)
+{
+    int paper = (int)(intptr_t)lv_event_get_user_data(e);
+    s_paper = s_paper_pref = (uint8_t)paper;
+    set_i32("gz_paper", paper);
+    save_game();
+    kit_ui_click();
+    if (paper) open_ov(OV_QR);
+    else close_ov();
+}
+
+static void qr_done_cb(lv_event_t *e) { (void)e; kit_ui_click(); close_ov(); }
+
+static void build_mode(void)
+{
+    ov_title_text("NOVO PUZZLE");
+    char buf[48];
+    if (s_mode == 0) snprintf(buf, sizeof buf, "PUZZLE DO DIA #%d · %s", (int)s_day, DIFF_LABELS[s_diff]);
+    else             snprintf(buf, sizeof buf, "PUZZLE LIVRE · %s", DIFF_LABELS[s_diff]);
+    section(s_ov_body, buf);
+
+    static const char *const T[2] = { "SÓ KIT", "COM FOLHA" };
+    static const char *const SUB[2] = { "anote tudo no KIT", "imprima ou anote no celular" };
+    for (int i = 0; i < 2; i++) {
+        bool on = i == s_paper_pref;   /* a última escolha vem marcada */
+        lv_obj_t *b = button(s_ov_body, lv_pct(100), 118, on ? T_ACCENT : KIT_COLOR_SURFACE, mode_pick_cb, i);
+        lv_obj_set_style_radius(b, 18, 0);
+        lv_obj_t *col = box(b);
+        lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 6, 0);
+        lv_obj_center(col);
+        kit_ui_label(col, T[i], on ? KIT_COLOR_ON_YELLOW : KIT_COLOR_TEXT, &kit_mono_26, 2);
+        kit_ui_label(col, SUB[i], on ? KIT_COLOR_ON_YELLOW : KIT_COLOR_TEXT, &kit_sans_22, 0);
+    }
+}
+
+static void build_qr(void)
+{
+    ov_title_text("FOLHA");
+    char url[KIT_UI_QR_MAX];
+    snprintf(url, sizeof url, FOLHA_URL "%d,%d,%d,%d&d=%d&n=%d",
+             s_pz.card[0], s_pz.card[1], s_pz.card[2], s_pz.card[3],
+             s_mode == 0 ? (int)s_day : 0, s_diff);
+    lv_obj_t *c = box(s_ov_body);
+    lv_obj_set_width(c, lv_pct(100));
+    lv_obj_set_flex_grow(c, 1);
+    kit_ui_flex(c, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 8, 0);
+    kit_ui_qr(&s_qr, c, url);   /* 216 px + "Toque para expandir" */
+    lv_obj_t *b = button(s_ov_body, lv_pct(100), TOUCH_H, T_ACCENT, qr_done_cb, 0);
+    lv_obj_set_style_radius(b, 18, 0);
+    btn_label(b, "CONTINUAR", KIT_COLOR_ON_YELLOW, &kit_mono_26);
 }
 
 static void build_result(void)
@@ -1344,6 +1421,9 @@ static void build_result(void)
 static void build_overlay(void)
 {
     if (s_ov_kind == OV_NONE) return;
+    kit_ui_qr_close(&s_qr);          /* o expandido (se aberto) some antes de a página ser refeita */
+    s_qr.qr = NULL;
+    s_qr.hint = NULL;
     lv_obj_clean(s_ov_title);
     lv_obj_clean(s_ov_body);
     s_gcheck = NULL;
@@ -1353,6 +1433,8 @@ static void build_overlay(void)
     case OV_NOTES:  build_notes(); break;
     case OV_GUESS:  build_guess(); break;
     case OV_RESULT: build_result(); break;
+    case OV_MODE:   build_mode(); break;
+    case OV_QR:     build_qr(); break;
     }
 }
 
@@ -1621,7 +1703,8 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     gz_init();
     load_settings();
-    if (!load_game()) new_puzzle_state();
+    bool fresh = !load_game();
+    if (fresh) new_puzzle_state();
     s_ov_kind = OV_NONE;
     s_notes_tab = 0;
     s_num_shape = 0;
@@ -1650,6 +1733,7 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     s_save_timer = lv_timer_create(save_timer_cb, 1500, NULL);
     lv_screen_load(s_screen);
+    if (fresh) open_ov(OV_MODE);   /* puzzle novo: SÓ KIT ou COM FOLHA */
     return KIT_OK;
 }
 
@@ -1660,11 +1744,12 @@ void tool_destroy(void)
     if (s_defer_timer) { lv_timer_delete(s_defer_timer); s_defer_timer = NULL; }
     if (s_save_timer)  { lv_timer_delete(s_save_timer);  s_save_timer = NULL; }
     if (s_api && s_dirty) save_game();
+    kit_ui_qr_reset(&s_qr);          /* devolve o brilho se o QR estava expandido */
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
 
     s_shell = (kit_ui_shell_t){0};
     s_diff_chips = s_mode_chips = s_assist_chips = (kit_ui_chips_t){0};
-    s_st_round = s_st_tests = s_cards_box = s_btn_round = NULL;
+    s_st_round = s_st_tests = s_cards_box = s_btn_round = s_btn_notes_lbl = NULL;
     memset(s_disc, 0, sizeof s_disc);
     memset(s_disc_lbl, 0, sizeof s_disc_lbl);
     memset(s_card_hole, 0, sizeof s_card_hole);

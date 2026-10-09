@@ -1,6 +1,6 @@
 # Gazua — `io.github.jcrvlh.gazua`
 
-Jogo de dedução solo inspirado no tabuleiro *Turing Machine*. Tem um código
+Jogo de dedução solo. Tem um código
 de 3 números escondido, um em cada forma (triângulo, quadrado e círculo, de
 1 a 5), e 4 **verificadores**. Cada verificador tem **uma regra secreta**,
 tirada de uma lista que você vê, e só responde **SIM** ou **NÃO**. Monte um
@@ -49,6 +49,24 @@ pastilha escura (o triângulo amarelo sumiria no fundo amarelo). As 3 regras
 de uma carta comum cabem sem rolar. O histórico de cada verificador fica em
 NOTAS > TESTES. A resposta aparece num carimbo de tela cheia, **SIM** verde
 ou **NÃO** vermelho, com glifo além da cor.
+
+### SÓ KIT ou COM FOLHA
+
+Todo puzzle novo começa com a escolha do modo, com a última escolha já
+marcada. A partida guarda o modo; ao reabrir, ela continua direto.
+
+- **SÓ KIT:** tudo no aparelho, como descrito acima.
+- **COM FOLHA:** o KIT só testa e recebe o palpite. Uma tela **FOLHA** mostra
+  um QR (`kit_ui_qr`, toque pra expandir) que abre a folha web
+  (`web-installer/gazua.html` no repositório `jcrvlh/kit`, publicada em
+  `jcrvlh.github.io/kit/gazua.html`). Lá dá pra anotar no celular ou imprimir
+  as folhas A4 e a folha COMO JOGAR. No KIT, NOTAS vira **FOLHA** (reabre o
+  QR), as regras do verificador ficam só pra leitura e a Ajuda não se aplica.
+
+A URL leva só as cartas, o dia e a dificuldade:
+`gazua.html?v=2,4,8,12&d=282&n=0`. `v` são os índices em `GZ_CARDS`; a
+**ordem dessa tabela é contrato** com a página web e com a semente do puzzle
+do dia. A regra secreta e o código nunca vão na URL.
 
 ### NOTAS
 
@@ -102,8 +120,9 @@ Feito para o KIT na mão, perto do rosto:
 
 ## Persistência
 
-`gz_game` guarda a partida em andamento (semente, dificuldade, modo, dia e as
-rodadas: código + 4 resultados). `gz_strike` e `gz_grid` guardam os riscos e
+`gz_game` guarda a partida em andamento (semente, dificuldade, modo, dia,
+SÓ KIT/COM FOLHA e as rodadas: código + 4 resultados; o formato antigo, sem o
+campo da folha, ainda é lido). `gz_paper` guarda a última escolha de modo. `gz_strike` e `gz_grid` guardam os riscos e
 a grade de números. Os ajustes ficam em `gz_diff`, `gz_mode` e `gz_assist`, e
 o histórico em `gz_played`, `gz_won`, `gz_bestr`, `gz_bestt` e `gz_dday`. A
 gravação é em lote (a cada 1,5 s, se mudou) e ao sair. O ◀ do shell sai
