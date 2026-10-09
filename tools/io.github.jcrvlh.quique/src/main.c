@@ -1,0 +1,922 @@
+/**
+ * @file main.c
+ * @brief QUIQUE — ping-pong solo contra a parede, controlado inclinando o KIT.
+ *
+ * A raquete segue a inclinação lateral (giroscópio). A cada 10 rebatidas o
+ * jogo pausa e oferece 3 cartas abertas, cada uma com um bônus E um ônus; os
+ * efeitos acumulam. Três vidas; acabou, o placar vai (ou não) pro top-5.
+ *
+ * Decisões que não são óbvias:
+ *  - Não há leitura crua do acelerômetro na API das Tools: a inclinação vem
+ *    do giroscópio integrado (`imu->gyro_poll`, centigraus), zerado ao
+ *    começar. O giroscópio deriva um pouco com o tempo, então o "centro" vaza
+ *    devagar em direção ao ângulo atual (quique_game.c, LEAK_DIV).
+ *  - O giroscópio é lido a cada quadro ENQUANTO a partida existe, inclusive
+ *    na pausa e na escolha de carta: ele só integra quando é lido, e parar de
+ *    ler perderia a rotação feita no meio tempo (o centro ficaria torto).
+ *  - Ângulo -> POSIÇÃO da raquete (não velocidade): é o que dá precisão.
+ *  - O sentido do eixo no aparelho não foi validado no hardware: o AJUSTE
+ *    tem DIREÇÃO NORMAL/INVERTIDA pra corrigir sem recompilar.
+ *  - Depois de escolher uma carta a bola volta parada na raquete: o toque na
+ *    tela tira o KIT do lugar, ninguém perde vida no susto.
+ *  - Inteiro puro (o .so não resolve float). Lógica em quique_game.c.
+ */
+#include "kit_tool_api.h"
+#include "kit_theme.h"
+#include "kit_fonts.h"
+#include "kit_ui.h"
+#include "quique_game.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#ifndef KIT_SDK_STUBS
+
+/* ----------------------------------------------------------------------- */
+
+#define Q_ACCENT    KIT_COLOR_GREEN           /* mesa de ping-pong */
+#define W           KIT_UI_SCREEN_W           /* 368 */
+#define H           KIT_UI_SCREEN_H           /* 448 */
+
+#define FRAME_MS        16
+#define CALIB_MS        900    /* "SEGURE O KIT RETO" antes de zerar o giroscópio */
+#define PICK_ARM_MS     700    /* cartas ignoram toque logo que abrem */
+#define RESUME_MS       800
+#define TOAST_MS        900
+#define CARD_GAP        10
+
+#define K_SENS  "qq_sens"
+#define K_DIR   "qq_dir"
+#define K_HS    "qq_hs"        /* qq_hs0..qq_hs4 */
+
+static const char *const SENS_LABELS[] = { "SUAVE", "NORMAL", "VIVA" };
+static const int32_t     SENS_CDEG[]   = { 3500, 2500, 1500 };
+static const char *const DIR_LABELS[]  = { "NORMAL", "INVERTIDA" };
+
+static const char RULES[] =
+    "Ping-pong sozinho contra a parede. Segure o KIT na m\xC3\xA3o, com a tela "
+    "pra voc\xC3\xAA.\n\n"
+    "1. Toque em COME\xC3\x87" "AR e segure o KIT reto: essa posi\xC3\xA7\xC3\xA3o "
+    "vira o centro.\n\n"
+    "2. Incline pros lados pra mover a raquete. Quanto mais inclina, mais "
+    "longe ela vai.\n\n"
+    "3. Cada rebatida vale ponto. N\xC3\xA3o deixe a bola passar: voc\xC3\xAA "
+    "tem 3 vidas.\n\n"
+    "4. A cada 10 rebatidas, escolha uma carta. Toda carta tem um lado bom "
+    "(+) e um ruim (-), e os efeitos se acumulam at\xC3\xA9 o fim.\n\n"
+    "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
+    "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
+    "6. Toque no placar, no topo, pra pausar.\n\n"
+    "A raquete foge pro lado errado? No AJUSTE, mude a DIRE\xC3\x87\xC3\x83O.";
+
+typedef enum { A_OFF = 0, A_CALIB, A_PLAY, A_PICK, A_PAUSE, A_RESUME, A_OVER } arena_state_t;
+
+/* ------------------------------------------------------------------ estado */
+
+static const kit_api_table_t *s_api;
+static lv_obj_t *s_screen;
+static kit_ui_shell_t  s_shell;
+static kit_ui_chips_t  s_sens_chips;
+static kit_ui_chips_t  s_dir_chips;
+static kit_ui_action_t s_action;
+
+static int     s_sens_idx = 1;
+static int     s_dir_idx;
+static int32_t s_hs[QQ_HS_N];
+
+static arena_state_t s_st;
+static qq_game_t     s_g;
+static int32_t s_roll, s_pitch;
+static bool    s_gyro_on;
+static bool    s_pick_armed;
+static int     s_rank = -1;
+
+static char s_cards_txt[3072];
+static char s_fx_buf[160];
+
+/* JOGO (parado) */
+static lv_obj_t *s_idle_best, *s_idle_top;
+
+/* arena */
+static lv_obj_t *s_arena, *s_hud_tap, *s_score_lbl, *s_lives_lbl, *s_fx_lbl;
+static lv_obj_t *s_wall, *s_fog, *s_portal[2], *s_shield;
+static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N];
+static lv_obj_t *s_toast;
+
+/* escolha de carta */
+static lv_obj_t *s_pick, *s_pick_title, *s_card[QQ_MAX_OFFER];
+static lv_obj_t *s_card_name[QQ_MAX_OFFER], *s_card_bon[QQ_MAX_OFFER], *s_card_onu[QQ_MAX_OFFER];
+
+/* pausa */
+static lv_obj_t *s_pause;
+
+/* fim */
+static lv_obj_t *s_over, *s_over_score, *s_over_caption, *s_over_fx;
+
+/* timers */
+static lv_timer_t *s_frame_timer, *s_step_timer, *s_toast_timer;
+static void (*s_step_fn)(void);
+
+/* cache do que já está desenhado (evita invalidar a tela à toa) */
+static int32_t s_drawn_score = -1, s_drawn_lives = -1, s_drawn_nhist = -1;
+static int32_t s_drawn_charges = -1, s_drawn_shield = -1;
+static int32_t s_drawn_wy = -1, s_drawn_fy = -1, s_drawn_pw = -1, s_drawn_r = -1;
+
+static void reset_drawn(void)
+{
+    s_drawn_score = s_drawn_lives = s_drawn_nhist = s_drawn_charges = s_drawn_shield = -1;
+    s_drawn_wy = s_drawn_fy = s_drawn_pw = s_drawn_r = -1;
+}
+
+/* -------------------------------------------------------------------- util */
+
+static int32_t rng(int32_t lo, int32_t hi) { return kit_ui_rnd(lo, hi); }
+
+static int32_t get_i32(const char *key, int32_t def)
+{
+    int32_t v;
+    if (s_api && s_api->storage && s_api->storage->get_i32(key, &v) == KIT_OK) return v;
+    return def;
+}
+
+static void set_i32(const char *key, int32_t v)
+{
+    if (s_api && s_api->storage) s_api->storage->set_i32(key, v);
+}
+
+/* só mexe no flag quando muda: add/remove HIDDEN invalida a área sempre */
+static void show(lv_obj_t *o, bool on)
+{
+    if (!o) return;
+    bool hidden = lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN);
+    if (on && hidden)       lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else if (!on && !hidden) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void kill_timer(lv_timer_t **t)
+{
+    if (*t) { lv_timer_delete(*t); *t = NULL; }
+}
+
+static void step_cb(lv_timer_t *t)
+{
+    (void)t;
+    kill_timer(&s_step_timer);
+    void (*fn)(void) = s_step_fn;
+    s_step_fn = NULL;
+    if (fn) fn();
+}
+
+/* agenda o próximo passo da arena (um só por vez) */
+static void step_after(uint32_t ms, void (*fn)(void))
+{
+    kill_timer(&s_step_timer);
+    s_step_fn = fn;
+    s_step_timer = lv_timer_create(step_cb, ms ? ms : 1, NULL);
+}
+
+static void decor(lv_obj_t *o) { lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE); }
+
+/* --- giroscópio --------------------------------------------------------- */
+
+static bool gyro_ok(void) { return s_api && s_api->imu && s_api->imu->gyro_poll; }
+
+static void gyro_begin(void)
+{
+    s_roll = s_pitch = 0;
+    if (!gyro_ok()) return;
+    if (!s_gyro_on && s_api->imu->gyro_start) s_api->imu->gyro_start();
+    else if (s_api->imu->gyro_rezero) s_api->imu->gyro_rezero();
+    s_gyro_on = true;
+}
+
+static void gyro_end(void)
+{
+    if (s_gyro_on && s_api && s_api->imu && s_api->imu->gyro_stop) s_api->imu->gyro_stop();
+    s_gyro_on = false;
+}
+
+static void gyro_read(void)
+{
+    if (!s_gyro_on || !gyro_ok()) return;
+    int32_t pitch, roll;
+    if (s_api->imu->gyro_poll(NULL, &pitch, &roll, NULL)) { s_roll = roll; s_pitch = pitch; }
+}
+
+/* --- top-5 -------------------------------------------------------------- */
+
+static void hs_load(void)
+{
+    char key[16];
+    for (int i = 0; i < QQ_HS_N; i++) {
+        snprintf(key, sizeof key, "%s%d", K_HS, i);
+        int32_t v = get_i32(key, 0);
+        s_hs[i] = v > 0 ? v : 0;
+    }
+}
+
+static void hs_save(void)
+{
+    char key[16];
+    for (int i = 0; i < QQ_HS_N; i++) {
+        snprintf(key, sizeof key, "%s%d", K_HS, i);
+        set_i32(key, s_hs[i]);
+    }
+}
+
+/* ---------------------------------------------------------------- pintura */
+
+static void paint_idle(void)
+{
+    if (s_hs[0] > 0) lv_label_set_text_fmt(s_idle_best, "RECORDE  %d", (int)s_hs[0]);
+    else             lv_label_set_text(s_idle_best, "SEM RECORDE AINDA");
+
+    char buf[96];
+    int len = 0;
+    buf[0] = 0;
+    for (int i = 0; i < QQ_HS_N && s_hs[i] > 0; i++)
+        len += snprintf(buf + len, sizeof buf - (size_t)len, "%s%d. %d",
+                        i ? "   " : "", i + 1, (int)s_hs[i]);
+    lv_label_set_text(s_idle_top, buf);
+    show(s_idle_top, s_hs[1] > 0);
+}
+
+static void toast_hide_cb(lv_timer_t *t)
+{
+    (void)t;
+    kill_timer(&s_toast_timer);
+    show(s_toast, false);
+}
+
+/* aviso curto no meio da mesa ("+1 VIDA", "FÊNIX!"); ms = 0 fica até trocar */
+static void toast(const char *txt, uint32_t ms)
+{
+    lv_label_set_text(s_toast, txt);
+    lv_obj_align(s_toast, LV_ALIGN_CENTER, 0, 20);
+    show(s_toast, true);
+    kill_timer(&s_toast_timer);
+    if (ms) s_toast_timer = lv_timer_create(toast_hide_cb, ms, NULL);
+}
+
+static void paint_hud(void)
+{
+    const qq_game_t *g = &s_g;
+    if (g->score != s_drawn_score) {
+        lv_label_set_text_fmt(s_score_lbl, "%d", (int)g->score);
+        s_drawn_score = g->score;
+    }
+    int32_t charges = g->smash_charges * 16 + g->slow_charges;
+    if (g->lives != s_drawn_lives || g->shield != s_drawn_shield) {
+        if (g->shield > 0) lv_label_set_text_fmt(s_lives_lbl, "VIDAS %d  ESCUDO %d", g->lives, g->shield);
+        else               lv_label_set_text_fmt(s_lives_lbl, "VIDAS %d", g->lives);
+        s_drawn_lives = g->lives;
+        s_drawn_shield = g->shield;
+    }
+    if (g->nhist != s_drawn_nhist || charges != s_drawn_charges) {
+        /* cargas primeiro: é o que muda no meio da partida e não pode cortar */
+        int len = 0;
+        s_fx_buf[0] = 0;
+        if (g->smash_charges)
+            len += snprintf(s_fx_buf + len, sizeof s_fx_buf - (size_t)len, "CORTADA %d \xC2\xB7 ", g->smash_charges);
+        if (g->slow_charges)
+            len += snprintf(s_fx_buf + len, sizeof s_fx_buf - (size_t)len, "FREIO %d \xC2\xB7 ", g->slow_charges);
+        qq_fx_text(g, s_fx_buf + len, (int)sizeof s_fx_buf - len);
+        if (s_fx_buf[len] == 0 && len >= 4) s_fx_buf[len - 4] = 0;   /* tira o " · " sobrando */
+        lv_label_set_text(s_fx_lbl, s_fx_buf);
+        s_drawn_nhist = g->nhist;
+        s_drawn_charges = charges;
+    }
+}
+
+static void set_rect(lv_obj_t *o, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    lv_obj_set_pos(o, x, y);
+    lv_obj_set_size(o, w, h);
+}
+
+static void paint_field(void)
+{
+    const qq_game_t *g = &s_g;
+    bool dark = g->blackout_t > 0;
+    int32_t wy = qq_wall_y(g);
+    int32_t fy = qq_fog_y(g);
+
+    /* geometria que só muda quando entra carta: redesenha só se mudou */
+    if (wy != s_drawn_wy || fy != s_drawn_fy) {
+        set_rect(s_wall, 0, wy - 4, W, 4);
+        if (fy > wy) set_rect(s_fog, 0, wy, W, fy - wy);
+        set_rect(s_portal[0], 0, wy, 4, QQ_PADDLE_Y - wy);
+        set_rect(s_portal[1], W - 4, wy, 4, QQ_PADDLE_Y - wy);
+        s_drawn_wy = wy;
+        s_drawn_fy = fy;
+    }
+    show(s_fog, fy > wy);
+    show(s_portal[0], qq_portals(g));
+    show(s_portal[1], qq_portals(g));
+    show(s_shield, g->shield > 0);
+
+    int32_t lp[2];
+    int n = qq_paddles(g, lp);
+    int32_t pw = qq_paddle_w(g);
+    if (pw != s_drawn_pw) {
+        for (int k = 0; k < 2; k++) lv_obj_set_size(s_paddle[k], pw, QQ_PADDLE_H);
+        s_drawn_pw = pw;
+    }
+    for (int k = 0; k < 2; k++) {
+        bool on = k < n && !dark;
+        show(s_paddle[k], on);
+        if (on) lv_obj_set_pos(s_paddle[k], lp[k], QQ_PADDLE_Y);
+    }
+
+    int32_t r = qq_ball_r(g);
+    if (r != s_drawn_r) {
+        for (int i = 0; i < QQ_MAX_BALLS; i++) {
+            lv_obj_set_size(s_ball[i], 2 * r, 2 * r);
+            lv_obj_set_style_radius(s_ball[i], r, 0);
+        }
+        s_drawn_r = r;
+    }
+    for (int i = 0; i < QQ_MAX_BALLS; i++) {
+        bool vis = qq_ball_visible(g, i);
+        show(s_ball[i], vis);
+        if (vis) lv_obj_set_pos(s_ball[i], g->ball[i].x / QQ_FP - r, g->ball[i].y / QQ_FP - r);
+    }
+
+    int16_t xs[QQ_PREVIEW_N], ys[QQ_PREVIEW_N];
+    int np = dark ? 0 : qq_preview(g, xs, ys);
+    for (int i = 0; i < QQ_PREVIEW_N; i++) {
+        show(s_dot[i], i < np);
+        if (i < np) lv_obj_set_pos(s_dot[i], xs[i] - 3, ys[i] - 3);
+    }
+    paint_hud();
+}
+
+/* --- som dos eventos ------------------------------------------------------ */
+
+static void play_events(uint32_t ev)
+{
+    bool quiet = qq_silent(&s_g);
+    if (ev & QE_MISS) kit_ui_miss();
+    else if (ev & QE_SMASH_PT) kit_ui_beep(1319, 70);
+    else if (ev & QE_HIT) { if (!quiet) kit_ui_beep((ev & QE_CENTER) ? 988 : 659, 25); }
+    else if (ev & QE_WALL) { if (!quiet) kit_ui_beep(440, 20); }
+    else if (ev & QE_SIDE) { if (!quiet) kit_ui_beep(392, 15); }
+    else if (ev & QE_PORTAL) { if (!quiet) kit_ui_beep(1047, 25); }
+    if (ev & QE_SHIELD) { kit_ui_beep(880, 40); kit_ui_beep(1175, 60); }
+    if (ev & QE_NEAR) kit_ui_beep(1568, 15);
+    if (ev & QE_SLIP) kit_ui_beep(247, 40);
+    if (ev & QE_BLACKOUT) kit_ui_beep(196, 40);
+    if (ev & QE_SMASH) kit_ui_sfx(KIT_SFX_VETO_HIT);
+    if (ev & QE_SLOWMO) kit_ui_beep(294, 120);
+}
+
+/* --------------------------------------------------------------- partida */
+
+static void open_pick(void);
+static void game_over(void);
+
+static void frame_cb(lv_timer_t *t)
+{
+    (void)t;
+    gyro_read();
+    if (s_st != A_PLAY) return;
+    uint32_t ev = qq_step(&s_g, s_roll, s_pitch);
+    play_events(ev);
+    if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
+    if (ev & QE_SHIELD) toast("ESCUDO!", 600);
+    paint_field();
+    if (ev & QE_OVER) { game_over(); return; }
+    if (ev & QE_PICK) open_pick();
+}
+
+static void begin_play(void)
+{
+    s_st = A_PLAY;
+    show(s_toast, false);
+    paint_field();
+}
+
+static void calib_done(void)
+{
+    gyro_begin();   /* bloqueia ~80 ms: KIT parado */
+    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
+    reset_drawn();
+    toast("VAI!", 600);
+    paint_field();
+    s_st = A_PLAY;
+    if (!s_frame_timer) s_frame_timer = lv_timer_create(frame_cb, FRAME_MS, NULL);
+}
+
+static void begin_match(void)
+{
+    s_st = A_CALIB;
+    s_rank = -1;
+    show(s_over, false);
+    show(s_pick, false);
+    show(s_pause, false);
+    memset(&s_g, 0, sizeof s_g);
+    s_g.lives = QQ_START_LIVES;
+    s_g.paddle = (W / 2) * QQ_FP;
+    reset_drawn();
+    for (int i = 0; i < QQ_MAX_BALLS; i++) show(s_ball[i], false);
+    for (int i = 0; i < QQ_PREVIEW_N; i++) show(s_dot[i], false);
+    paint_hud();
+    toast("SEGURE O KIT RETO", 0);
+    kit_ui_keep_awake(true);
+    step_after(CALIB_MS, calib_done);
+}
+
+/* --- escolha de carta ------------------------------------------------------ */
+
+static void pick_arm(void) { s_pick_armed = true; }
+
+static void open_pick(void)
+{
+    s_st = A_PICK;
+    s_pick_armed = false;
+    kit_ui_sfx(KIT_SFX_REVEAL);
+
+    int n = s_g.noffer;
+    int top = 56;
+    int avail = H - top - 16;
+    int ch = (avail - (n - 1) * CARD_GAP) / (n > 0 ? n : 1);
+    lv_label_set_text_fmt(s_pick_title, "ESCOLHA UMA CARTA \xC2\xB7 %d", (int)s_g.hits);
+    for (int i = 0; i < QQ_MAX_OFFER; i++) {
+        bool on = i < n;
+        show(s_card[i], on);
+        if (!on) continue;
+        const qq_card_info_t *c = &QQ_CARDS[s_g.offer[i]];
+        set_rect(s_card[i], KIT_UI_PAD, top + i * (ch + CARD_GAP), KIT_UI_CONTENT, ch);
+        lv_label_set_text(s_card_name[i], c->name);
+        lv_label_set_text_fmt(s_card_bon[i], "+ %s", c->bonus);
+        lv_label_set_text_fmt(s_card_onu[i], "- %s", c->onus);
+        int pad = n > 3 ? 6 : 12;
+        lv_obj_set_style_pad_top(s_card[i], pad, 0);
+        lv_obj_set_style_pad_bottom(s_card[i], pad, 0);
+    }
+    show(s_pick, true);
+    step_after(PICK_ARM_MS, pick_arm);
+}
+
+static void card_cb(lv_event_t *e)
+{
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    if (s_st != A_PICK || !s_pick_armed || i >= s_g.noffer) return;
+    kit_ui_confirm();
+    int32_t lives = s_g.lives;
+    qq_take_offer(&s_g, i);
+    show(s_pick, false);
+    s_st = A_PLAY;
+    if (s_g.lives > lives) {
+        char b[16];
+        snprintf(b, sizeof b, "+%d VIDA%s", (int)(s_g.lives - lives), s_g.lives - lives > 1 ? "S" : "");
+        toast(b, TOAST_MS);
+    } else if (s_g.lives < lives) {
+        toast("1 VIDA", TOAST_MS);
+    }
+    paint_field();
+}
+
+/* --- pausa ----------------------------------------------------------------- */
+
+static void hud_tap_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st != A_PLAY) return;
+    kit_ui_click();
+    s_st = A_PAUSE;
+    show(s_pause, true);
+}
+
+static void resume_go(void)
+{
+    if (s_st != A_RESUME) return;
+    begin_play();
+}
+
+static void pause_continue_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st != A_PAUSE) return;
+    kit_ui_click();
+    show(s_pause, false);
+    s_st = A_RESUME;
+    toast("VAI!", RESUME_MS);
+    step_after(RESUME_MS, resume_go);
+}
+
+static void pause_end_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st != A_PAUSE) return;
+    kit_ui_click();
+    show(s_pause, false);
+    game_over();
+}
+
+/* --- fim ------------------------------------------------------------------- */
+
+static void game_over(void)
+{
+    s_st = A_OVER;
+    kill_timer(&s_frame_timer);
+    kill_timer(&s_step_timer);
+    gyro_end();
+    kit_ui_keep_awake(false);
+    show(s_toast, false);
+    show(s_pick, false);
+
+    int32_t fin = qq_final_score(&s_g);
+    s_rank = qq_hs_insert(s_hs, fin);
+    if (s_rank >= 0) hs_save();
+
+    lv_label_set_text_fmt(s_over_score, "%d", (int)fin);
+    if (s_rank == 0)
+        lv_label_set_text(s_over_caption, "NOVO RECORDE!");
+    else if (s_rank > 0)
+        lv_label_set_text_fmt(s_over_caption, "%d\xC2\xBA LUGAR \xC2\xB7 RECORDE %d", s_rank + 1, (int)s_hs[0]);
+    else
+        lv_label_set_text_fmt(s_over_caption, "RECORDE %d", (int)s_hs[0]);
+    if (s_g.onu[QC_FENIX] && fin != s_g.score)
+        lv_label_set_text_fmt(s_over_fx, "%d PONTOS - 25%% DA F\xC3\x8ANIX", (int)s_g.score);
+    else {
+        qq_fx_text(&s_g, s_fx_buf, sizeof s_fx_buf);
+        lv_label_set_text(s_over_fx, s_fx_buf[0] ? s_fx_buf : "SEM CARTAS");
+    }
+    show(s_over, true);
+    kit_ui_sfx(s_rank == 0 ? KIT_SFX_ONBOARD_DONE : KIT_SFX_ADEDONHA_STOP);
+}
+
+/* --- abrir / fechar a arena -------------------------------------------- */
+
+static void arena_open(void)
+{
+    show(s_arena, true);
+    begin_match();
+}
+
+static void arena_close(void)
+{
+    kill_timer(&s_frame_timer);
+    kill_timer(&s_step_timer);
+    kill_timer(&s_toast_timer);
+    s_step_fn = NULL;
+    gyro_end();
+    s_st = A_OFF;
+    kit_ui_keep_awake(false);
+    show(s_arena, false);
+    paint_idle();
+    kit_ui_shell_open(&s_shell, 1);
+}
+
+/* ------------------------------------------------------------- callbacks */
+
+static void on_shake(void *user)
+{
+    (void)user;
+    if (s_st != A_PLAY) return;
+    uint32_t ev = qq_shake(&s_g);
+    play_events(ev);
+    if (ev & QE_SMASH) toast("CORTADA!", 600);
+    if (ev & QE_SLOWMO) toast("FREIO", 600);
+    if (ev) paint_hud();
+}
+
+static void over_again_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st != A_OVER) return;
+    kit_ui_confirm();
+    begin_match();
+}
+
+static void over_exit_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st != A_OVER) return;
+    kit_ui_click();
+    arena_close();
+}
+
+static void action_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_st == A_OFF) { kit_ui_confirm(); arena_open(); }
+}
+
+static void sens_cb(int idx, void *user)
+{
+    (void)user;
+    s_sens_idx = idx;
+    set_i32(K_SENS, idx);
+}
+
+static void dir_cb(int idx, void *user)
+{
+    (void)user;
+    s_dir_idx = idx;
+    set_i32(K_DIR, idx);
+}
+
+/* ---------------------------------------------------------------- AJUSTE */
+
+static void section_label(lv_obj_t *p, const char *txt)
+{
+    kit_ui_label(p, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+}
+
+static void build_ajuste(lv_obj_t *tile)
+{
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    lv_obj_t *p = lv_obj_create(tile);
+    lv_obj_remove_style_all(p);
+    lv_obj_set_size(p, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_pad_left(p, KIT_UI_PAD, 0);
+    lv_obj_set_style_pad_right(p, KIT_UI_PAD, 0);
+    lv_obj_set_style_pad_top(p, 8, 0);
+    lv_obj_set_style_pad_bottom(p, 32, 0);
+    lv_obj_set_style_pad_row(p, 12, 0);
+    lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);
+    lv_obj_add_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(p, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
+
+    section_label(p, "SENSIBILIDADE");
+    kit_ui_chips(&s_sens_chips, p, SENS_LABELS, 3, s_sens_idx, Q_ACCENT, sens_cb, NULL);
+    lv_obj_t *hint = kit_ui_label(p, "SUAVE 35\xC2\xB0 \xC2\xB7 NORMAL 25\xC2\xB0 \xC2\xB7 VIVA 15\xC2\xB0 AT\xC3\x89 A BORDA",
+                                  KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(hint, KIT_UI_CONTENT);
+    section_label(p, "DIRE\xC3\x87\xC3\x83O DA RAQUETE");
+    kit_ui_chips(&s_dir_chips, p, DIR_LABELS, 2, s_dir_idx, Q_ACCENT, dir_cb, NULL);
+}
+
+/* ------------------------------------------------------------------ JOGO */
+
+static void build_jogo(lv_obj_t *tile)
+{
+    lv_obj_set_style_pad_all(tile, 0, 0);
+
+    lv_obj_t *g = kit_ui_box(tile);
+    lv_obj_set_size(g, KIT_UI_CONTENT, LV_SIZE_CONTENT);
+    kit_ui_flex(g, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 14, 0);
+    lv_obj_align(g, LV_ALIGN_CENTER, 0, -(KIT_UI_BTN_H + KIT_UI_BTN_MARGIN) / 2);
+
+    /* protagonista: a mesa — parede em cima, bola no ar, raquete embaixo */
+    lv_obj_t *sq = kit_ui_box(g);
+    lv_obj_set_size(sq, 132, 132);
+    kit_ui_rect(sq, 132, 6, KIT_COLOR_TEXT, 0);
+    lv_obj_t *ball = kit_ui_rect(sq, 22, 22, KIT_COLOR_TEXT, 11);
+    lv_obj_set_pos(ball, 78, 46);
+    lv_obj_t *pad = kit_ui_rect(sq, 60, 14, Q_ACCENT, 7);
+    lv_obj_set_pos(pad, 30, 118);
+
+    s_idle_best = kit_ui_label(g, "", KIT_COLOR_TEXT, &kit_mono_20, 2);
+    s_idle_top = kit_ui_label(g, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    kit_ui_label(g, "INCLINE O KIT PRA JOGAR", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+
+    kit_ui_action_button(&s_action, tile, Q_ACCENT, action_cb);
+    kit_ui_action_set(&s_action, "COME\xC3\x87" "AR");
+}
+
+/* --------------------------------------------------------------- CARTAS */
+
+static void build_cards_text(void)
+{
+    int len = 0;
+    s_cards_txt[0] = 0;
+    len += snprintf(s_cards_txt + len, sizeof s_cards_txt - (size_t)len,
+                    "Toda carta traz um b\xC3\xB4nus (+) e um \xC3\xB4nus (-). "
+                    "Os efeitos se acumulam; pegar a mesma carta de novo refor\xC3\xA7" "a.\n\n");
+    for (int c = 0; c < QC_COUNT && len < (int)sizeof s_cards_txt - 1; c++) {
+        const qq_card_info_t *k = &QQ_CARDS[c];
+        len += snprintf(s_cards_txt + len, sizeof s_cards_txt - (size_t)len,
+                        "%s\n+ %s\n- %s\n\n", k->name, k->bonus, k->onus);
+    }
+}
+
+/* ---------------------------------------------------------------- arena */
+
+static lv_obj_t *pill(lv_obj_t *parent, int w, uint32_t bg, uint32_t fg, const char *txt, lv_event_cb_t cb)
+{
+    lv_obj_t *b = kit_ui_rect(parent, w, KIT_UI_BTN_H, bg, KIT_UI_BTN_H / 2);
+    if (bg == KIT_COLOR_BG) {
+        lv_obj_set_style_border_width(b, 3, 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(KIT_COLOR_TEXT), 0);
+    }
+    kit_ui_tap(b, cb, 0);
+    lv_obj_center(kit_ui_label(b, txt, fg, &kit_mono_20, 2));
+    return b;
+}
+
+static void build_pick(void)
+{
+    s_pick = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
+    lv_obj_set_pos(s_pick, 0, 0);
+    s_pick_title = kit_ui_label(s_pick, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 24);
+    for (int i = 0; i < QQ_MAX_OFFER; i++) {
+        lv_obj_t *c = kit_ui_rect(s_pick, KIT_UI_CONTENT, 100, KIT_COLOR_SURFACE, 18);
+        lv_obj_set_style_pad_left(c, 16, 0);
+        lv_obj_set_style_pad_right(c, 16, 0);
+        lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_style_pad_row(c, 2, 0);
+        kit_ui_tap(c, card_cb, i);
+        lv_obj_set_style_bg_color(c, lv_color_hex(KIT_COLOR_SURFACE_ALT), LV_STATE_PRESSED);
+        s_card_name[i] = kit_ui_label(c, "", KIT_COLOR_TEXT, &kit_mono_20, 2);
+        s_card_bon[i] = kit_ui_label(c, "", KIT_COLOR_GREEN, &kit_sans_22, 0);
+        s_card_onu[i] = kit_ui_label(c, "", KIT_COLOR_RED, &kit_sans_22, 0);
+        lv_label_set_long_mode(s_card_bon[i], LV_LABEL_LONG_DOT);
+        lv_label_set_long_mode(s_card_onu[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_width(s_card_bon[i], KIT_UI_CONTENT - 32);
+        lv_obj_set_width(s_card_onu[i], KIT_UI_CONTENT - 32);
+        s_card[i] = c;
+    }
+    show(s_pick, false);
+}
+
+static void build_pause(void)
+{
+    s_pause = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
+    lv_obj_set_pos(s_pause, 0, 0);
+    lv_obj_set_style_bg_opa(s_pause, LV_OPA_90, 0);
+    lv_obj_t *col = kit_ui_box(s_pause);
+    lv_obj_set_size(col, KIT_UI_CONTENT, LV_SIZE_CONTENT);
+    kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 16, 0);
+    lv_obj_center(col);
+    kit_ui_label(col, "PAUSA", KIT_COLOR_TEXT, &kit_mono_26, 3);
+    kit_ui_label(col, "O GIROSC\xC3\x93PIO CONTINUA LENDO:", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    kit_ui_label(col, "VOLTE O KIT PRO CENTRO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    pill(col, KIT_UI_CONTENT, Q_ACCENT, kit_ui_on(Q_ACCENT), "CONTINUAR", pause_continue_cb);
+    pill(col, KIT_UI_CONTENT, KIT_COLOR_BG, KIT_COLOR_TEXT, "ENCERRAR", pause_end_cb);
+    show(s_pause, false);
+}
+
+static void build_over(void)
+{
+    s_over = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
+    lv_obj_set_pos(s_over, 0, 0);
+    lv_obj_t *col = kit_ui_box(s_over);
+    lv_obj_set_size(col, KIT_UI_CONTENT, LV_SIZE_CONTENT);
+    kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 10, 0);
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, -(KIT_UI_BTN_H + KIT_UI_BTN_MARGIN) / 2);
+    kit_ui_label(col, "FIM DE JOGO", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 3);
+    s_over_score = kit_ui_label(col, "", KIT_COLOR_TEXT, &kit_display_120, 0);
+    s_over_caption = kit_ui_label(col, "", Q_ACCENT, &kit_mono_20, 2);
+    s_over_fx = kit_ui_text(col, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, KIT_UI_CONTENT);
+
+    lv_obj_t *row = kit_ui_box(s_over);
+    lv_obj_set_size(row, KIT_UI_CONTENT, KIT_UI_BTN_H);
+    kit_ui_flex(row, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 12);
+    lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -KIT_UI_BTN_MARGIN);
+    pill(row, (KIT_UI_CONTENT - 12) / 2, Q_ACCENT, kit_ui_on(Q_ACCENT), "DE NOVO", over_again_cb);
+    pill(row, (KIT_UI_CONTENT - 12) / 2, KIT_COLOR_BG, KIT_COLOR_TEXT, "SAIR", over_exit_cb);
+    show(s_over, false);
+}
+
+static void build_arena(void)
+{
+    /* tela cheia por cima da titlebar: o KIT vira a mesa */
+    s_arena = kit_ui_rect(s_screen, W, H, KIT_COLOR_BG, 0);
+    lv_obj_set_pos(s_arena, 0, 0);
+    lv_obj_add_flag(s_arena, LV_OBJ_FLAG_CLICKABLE);
+
+    /* placar (toque = pausa) */
+    s_hud_tap = kit_ui_box(s_arena);
+    set_rect(s_hud_tap, 0, 0, W, QQ_WALL_Y - 4);
+    lv_obj_add_flag(s_hud_tap, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_hud_tap, hud_tap_cb, LV_EVENT_CLICKED, NULL);
+    s_score_lbl = kit_ui_label(s_hud_tap, "0", KIT_COLOR_TEXT, &kit_mono_26, 2);
+    lv_obj_set_pos(s_score_lbl, KIT_UI_PAD, 10);
+    s_lives_lbl = kit_ui_label(s_hud_tap, "", KIT_COLOR_TEXT, &kit_mono_16, 2);
+    lv_obj_align(s_lives_lbl, LV_ALIGN_TOP_RIGHT, -KIT_UI_PAD, 18);
+    s_fx_lbl = kit_ui_label(s_hud_tap, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    lv_label_set_long_mode(s_fx_lbl, LV_LABEL_LONG_DOT);
+    set_rect(s_fx_lbl, KIT_UI_PAD, 40, KIT_UI_CONTENT, 40);   /* 2 linhas */
+
+    s_wall = kit_ui_rect(s_arena, W, 4, KIT_COLOR_TEXT, 0);
+    decor(s_wall);
+    for (int k = 0; k < 2; k++) {
+        s_portal[k] = kit_ui_rect(s_arena, 4, 10, KIT_COLOR_BLUE, 0);
+        decor(s_portal[k]);
+    }
+    s_shield = kit_ui_rect(s_arena, W, 3, KIT_COLOR_BLUE, 0);
+    lv_obj_set_pos(s_shield, 0, QQ_SHIELD_Y);
+    decor(s_shield);
+
+    for (int i = 0; i < QQ_PREVIEW_N; i++) {
+        s_dot[i] = kit_ui_rect(s_arena, 6, 6, KIT_COLOR_TEXT_MUTED, 3);
+        decor(s_dot[i]);
+    }
+    for (int k = 0; k < 2; k++) {
+        s_paddle[k] = kit_ui_rect(s_arena, QQ_PADDLE_W, QQ_PADDLE_H, Q_ACCENT, QQ_PADDLE_H / 2);
+        decor(s_paddle[k]);
+    }
+    for (int i = 0; i < QQ_MAX_BALLS; i++) {
+        s_ball[i] = kit_ui_rect(s_arena, 2 * QQ_BALL_R, 2 * QQ_BALL_R,
+                                i ? KIT_COLOR_YELLOW : KIT_COLOR_TEXT, QQ_BALL_R);
+        decor(s_ball[i]);
+    }
+    /* neblina por cima das bolas */
+    s_fog = kit_ui_rect(s_arena, W, 10, KIT_COLOR_SURFACE_ALT, 0);
+    decor(s_fog);
+
+    s_toast = kit_ui_label(s_arena, "", KIT_COLOR_TEXT, &kit_mono_26, 3);
+    decor(s_toast);
+    show(s_toast, false);
+
+    build_pick();
+    build_pause();
+    build_over();
+    show(s_arena, false);
+}
+
+#endif /* !KIT_SDK_STUBS */
+
+/* ===================================================================== */
+
+#ifdef KIT_SDK_STUBS
+
+KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
+{
+    (void)ctx;
+    printf("[Quique stub] tool_init — UI sob #ifndef KIT_SDK_STUBS\n");
+    return KIT_OK;
+}
+KIT_TOOL_EXPORT void tool_destroy(void) {}
+
+#else
+
+KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
+{
+    if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
+    s_api = ctx->api;
+    kit_ui_bind(s_api);
+
+    int32_t v = get_i32(K_SENS, 1);
+    s_sens_idx = (v >= 0 && v <= 2) ? (int)v : 1;
+    v = get_i32(K_DIR, 0);
+    s_dir_idx = (v == 1) ? 1 : 0;
+    hs_load();
+    s_st = A_OFF;
+    s_step_fn = NULL;
+    s_gyro_on = false;
+
+    s_screen = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(s_screen, lv_color_hex(KIT_COLOR_BG), 0);
+    lv_obj_set_style_bg_opa(s_screen, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    build_cards_text();
+    kit_ui_shell_begin(&s_shell, s_screen, "QUIQUE", Q_ACCENT, 4);
+    kit_ui_shell_tiles(&s_shell, NULL, NULL);
+    build_ajuste(s_shell.tiles[0]);
+    build_jogo(s_shell.tiles[1]);
+    kit_ui_help_page(s_shell.tiles[2], "COMO JOGA", RULES);
+    kit_ui_help_page(s_shell.tiles[3], "CARTAS", s_cards_txt);
+    build_arena();
+    paint_idle();
+    if (s_api->imu && s_api->imu->register_shake_callback)
+        s_api->imu->register_shake_callback(on_shake, NULL);
+
+    lv_obj_update_layout(s_screen);
+    kit_ui_shell_open(&s_shell, 1);   /* abre no JOGO */
+    lv_screen_load(s_screen);
+    return KIT_OK;
+}
+
+KIT_TOOL_EXPORT void tool_destroy(void)
+{
+    kill_timer(&s_frame_timer);
+    kill_timer(&s_step_timer);
+    kill_timer(&s_toast_timer);
+    gyro_end();
+    kit_ui_keep_awake(false);
+    if (s_api && s_api->imu && s_api->imu->register_shake_callback)
+        s_api->imu->register_shake_callback(NULL, NULL);
+    if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
+
+    s_shell = (kit_ui_shell_t){0};
+    s_sens_chips = (kit_ui_chips_t){0};
+    s_dir_chips = (kit_ui_chips_t){0};
+    s_action = (kit_ui_action_t){0};
+    s_idle_best = s_idle_top = NULL;
+    s_arena = s_hud_tap = s_score_lbl = s_lives_lbl = s_fx_lbl = NULL;
+    s_wall = s_fog = s_shield = s_toast = NULL;
+    s_portal[0] = s_portal[1] = s_paddle[0] = s_paddle[1] = NULL;
+    memset(s_ball, 0, sizeof s_ball);
+    memset(s_dot, 0, sizeof s_dot);
+    s_pick = s_pick_title = s_pause = NULL;
+    memset(s_card, 0, sizeof s_card);
+    memset(s_card_name, 0, sizeof s_card_name);
+    memset(s_card_bon, 0, sizeof s_card_bon);
+    memset(s_card_onu, 0, sizeof s_card_onu);
+    s_over = s_over_score = s_over_caption = s_over_fx = NULL;
+    s_step_fn = NULL;
+    s_st = A_OFF;
+    kit_ui_bind(NULL);
+    s_api = NULL;
+}
+
+#endif

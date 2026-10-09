@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Quique — linguagem "Brutalist Bauhaus" do KIT.
+    A mesa: a parede em cima, a bola no ar (com rastro) e a raquete verde
+    embaixo, a caminho de onde a bola vai cair. Fonte de verdade; icon.png e icon.bin são
+    gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <rect x="54" y="52" width="132" height="8" fill="#EFEADD"/>
+  <circle cx="96" cy="70" r="4" fill="#6E6C66"/>
+  <circle cx="112" cy="84" r="5" fill="#6E6C66"/>
+  <circle cx="136" cy="104" r="15" fill="#EFEADD"/>
+  <rect x="104" y="168" width="80" height="16" rx="8" fill="#45A05B"/>
+</svg>
