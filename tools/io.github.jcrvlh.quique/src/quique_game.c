@@ -653,7 +653,13 @@ int qq_hs_insert(int32_t hs[QQ_HS_N], int32_t score)
     int pos = -1;
     for (int i = 0; i < QQ_HS_N; i++) if (score > hs[i]) { pos = i; break; }
     if (pos < 0) return -1;
-    for (int i = QQ_HS_N - 1; i > pos; i--) hs[i] = hs[i - 1];
-    hs[pos] = score;
+    /* troca em cadeia em vez de deslocar o array: o GCC transforma o
+     * deslocamento em memmove, que firmwares antigos não exportam */
+    int32_t carry = score;
+    for (int i = pos; i < QQ_HS_N; i++) {
+        int32_t t = hs[i];
+        hs[i] = carry;
+        carry = t;
+    }
     return pos;
 }
