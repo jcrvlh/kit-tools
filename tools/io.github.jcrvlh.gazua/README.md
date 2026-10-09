@@ -12,12 +12,13 @@ dedução cruza as duas coisas.
 ## Páginas
 
 ```
-AJUSTE  ◄──►  JOGO  ◄──►  COMO JOGA
+AJUSTE  ◄──►  CÓDIGO  ◄──►  TESTES  ◄──►  COMO JOGA
 ```
 
-Abre sempre no **JOGO**. Por cima do JOGO abrem telas cheias com a própria
-barra de título (o ◀ fecha a tela): **VERIFICADOR**, **NOTAS**, **ARRISCAR** e
-**RESULTADO**.
+Abre sempre em **CÓDIGO**. O jogo ocupa duas páginas para que todo alvo de
+toque tenha 80 px (`KIT_TOUCH_TARGET_COMFORTABLE`). Por cima delas abrem telas
+cheias com a própria barra de título (o ◀ fecha a tela): **VERIFICADOR**,
+**NOTAS**, **ARRISCAR** e **RESULTADO**.
 
 - **AJUSTE**
   - **Regras:** FÁCIL (só regras sobre uma forma ou um par de formas) ou
@@ -31,17 +32,21 @@ barra de título (o ◀ fecha a tela): **VERIFICADOR**, **NOTAS**, **ARRISCAR** 
   - **Histórico:** jogados, abertos e o melhor placar (rodadas e testes).
   - No meio de uma partida, mudar Regras ou Puzzle só vale no próximo
     puzzle. Nada se perde por um toque sem querer.
-- **JOGO:** "RODADA n · x/3 TESTES", os 3 discos (toque avança 1→5; o código
-  trava no 1º teste da rodada), os 4 verificadores (tema da carta + furo com
-  o resultado da rodada) e o rodapé: notas, nova rodada (+) e **ARRISCAR**.
+- **CÓDIGO:** "RODADA n · x/3" e a dica "TESTES ▸", os 3 discos de 104×124
+  (o toque avança 1→5; o código trava no 1º teste da rodada), [NOTAS] e
+  [NOVA RODADA] com 162×80 cada, e [ARRISCAR] com 336×80.
+- **TESTES:** os 4 verificadores em linhas de 336×80: tema da carta à
+  esquerda, resultado da rodada à direita.
 - **COMO JOGA:** as regras, curtas.
 
 ### VERIFICADOR
 
-O título é o tema da carta. Embaixo vêm a faixa "VAI TESTAR" com o código da
-rodada, as regras possíveis (um toque risca, outro desrisca; com Ajuda, as
-contraditas aparecem como AUTO), os testes já feitos nesse verificador e o
-botão **TESTAR**. A resposta aparece num carimbo de tela cheia, **SIM** verde
+O título é o tema da carta. Embaixo vêm as regras possíveis em linhas de
+336×80 (um toque risca, outro desrisca; com Ajuda, as contraditas aparecem
+como AUTO) e o botão **TESTAR △2 □4 ○3**, com o código da rodada numa
+pastilha escura (o triângulo amarelo sumiria no fundo amarelo). As 3 regras
+de uma carta comum cabem sem rolar. O histórico de cada verificador fica em
+NOTAS > TESTES. A resposta aparece num carimbo de tela cheia, **SIM** verde
 ou **NÃO** vermelho, com glifo além da cor.
 
 ### NOTAS
@@ -89,7 +94,9 @@ Feito para o KIT na mão, perto do rosto:
 
 - texto necessário para jogar em 26–28 px (`kit_mono_26`, `kit_sans_28`) e
   números em `kit_display_44`;
-- alvos de toque de 64 px ou mais;
+- alvos de toque de 80 px (`KIT_TOUCH_TARGET_COMFORTABLE`), com 8 a 12 px
+  de vão entre vizinhos; o ◀ é o chip padrão do shell (56 px, com 12 px de
+  toque extra em volta);
 - cor nunca vem sozinha: a forma diz quem é quem, e SIM/NÃO têm glifo.
 
 ## Persistência

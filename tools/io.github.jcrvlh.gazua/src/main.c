@@ -71,6 +71,11 @@ static bool     s_dirty;
 
 #define T_ACCENT   KIT_COLOR_YELLOW
 
+/* alvos de toque: KIT_TOUCH_TARGET_COMFORTABLE (80 px) em tudo que se toca no jogo */
+#define TOUCH_H       KIT_TOUCH_TARGET_COMFORTABLE
+#define DISC_CODE_H   124
+#define DISC_GUESS_H  112
+
 static uint8_t s_guess[GZ_SHAPES];
 static bool    s_record, s_win;
 #define C_DARK_ON_GREEN 0x0B2412
@@ -83,13 +88,14 @@ static const char RULES[] =
     "OS VERIFICADORES\n"
     "Cada um tem UMA regra secreta, tirada da lista dele. Ele só responde SIM ou NÃO.\n\n"
     "A RODADA\n"
-    "Toque nos discos pra montar um código. Teste até 3 verificadores. O código trava no 1º teste.\n\n"
+    "Na página CÓDIGO, toque nos discos pra montar um código. Deslize pra TESTES e teste até 3 verificadores. "
+    "O código trava no 1º teste.\n\n"
     "ARRISCAR\n"
     "Um palpite só: errou, acabou. Menos rodadas vence; no empate, menos testes.\n\n"
     "A PISTA\n"
     "Nenhum verificador sobra e a solução é uma só. Se uma regra parece não servir pra nada, ela não é a regra certa.\n\n"
-    "OS BOTÕES\n"
-    "O bloco abre as notas. O + abre uma nova rodada (depois do 1º teste).\n\n"
+    "NOTAS\n"
+    "A tabela de todos os testes e uma grade pra riscar números.\n\n"
     "AJUDA\n"
     "No AJUSTE. Risca sozinho as regras que algum teste já contradiz e confere o palpite contra os seus testes. "
     "Não olha a resposta.\n\n"
@@ -476,21 +482,6 @@ static lv_obj_t *mini_lock(lv_obj_t *parent, uint32_t color)
     return l;
 }
 
-/* ícone de bloco de notas */
-static void notes_icon(lv_obj_t *parent)
-{
-    lv_obj_t *pad = box(parent);
-    lv_obj_set_size(pad, 28, 34);
-    lv_obj_center(pad);
-    lv_obj_set_style_border_width(pad, 4, 0);
-    lv_obj_set_style_border_color(pad, lv_color_hex(KIT_COLOR_TEXT), 0);
-    lv_obj_set_style_radius(pad, 4, 0);
-    for (int k = 0; k < 3; k++) {
-        lv_obj_t *ln = deco(kit_ui_rect(pad, k == 2 ? 8 : 14, 4, KIT_COLOR_TEXT, 1));
-        lv_obj_set_pos(ln, 3, 4 + k * 7);
-    }
-}
-
 /* SIM / NÃO num rótulo de furo */
 static void set_mark(lv_obj_t *hole, lv_obj_t *lbl, int res)
 {
@@ -533,9 +524,9 @@ static void paint_disc(lv_obj_t *disc, lv_obj_t *lbl, int i, int v, bool locked)
     (void)i;
 }
 
-static lv_obj_t *make_disc(lv_obj_t *parent, int i, lv_event_cb_t cb, lv_obj_t **lbl_out)
+static lv_obj_t *make_disc(lv_obj_t *parent, int i, int h, lv_event_cb_t cb, lv_obj_t **lbl_out)
 {
-    lv_obj_t *d = button(parent, 104, 98, KIT_COLOR_SURFACE, cb, i);
+    lv_obj_t *d = button(parent, 104, h, KIT_COLOR_SURFACE, cb, i);
     lv_obj_set_style_radius(d, 18, 0);
     lv_obj_set_style_border_color(d, lv_color_hex(KIT_COLOR_LINE), 0);
     lv_obj_t *im = shape_img(d, SHAPE_IMG_LG, i, SHAPE_COLOR[i]);
@@ -567,7 +558,7 @@ static void refresh_jogo(void)
     if (!s_st_round) return;
     int u = used();
     lv_label_set_text_fmt(s_st_round, "RODADA %d", s_nr);
-    lv_label_set_text_fmt(s_st_tests, "· %d/3 TESTES", u);
+    lv_label_set_text_fmt(s_st_tests, "· %d/3", u);
     for (int i = 0; i < GZ_SHAPES; i++)
         paint_disc(s_disc[i], s_disc_lbl[i], i, s_rounds[s_nr - 1].code[i], u > 0);
     for (int v = 0; v < GZ_VERIFIERS; v++)
@@ -625,21 +616,21 @@ static void guess_open_cb(lv_event_t *e)
     open_ov(OV_GUESS);
 }
 
+/* página TESTES: os 4 verificadores em linhas de 336 × 80 */
 static void build_cards(void)
 {
     lv_obj_clean(s_cards_box);
     char buf[48];
     for (int v = 0; v < GZ_VERIFIERS; v++) {
-        lv_obj_t *c = button(s_cards_box, 164, 64, KIT_COLOR_SURFACE, card_cb, v);
-        lv_obj_set_pos(c, (v % 2) * 172, (v / 2) * 72);
-        int card = s_pz.card[v];
-        gz_face(card, buf, sizeof buf);
-        bool lg = GZ_CARDS[card].long_face;
-        lv_obj_t *t = tokens(c, buf, lg ? &kit_sans_22 : &kit_sans_28, KIT_COLOR_TEXT, 106);
-        lv_obj_align(t, LV_ALIGN_LEFT_MID, 12, 0);
-        lv_obj_t *h = deco(kit_ui_rect(c, 32, 32, KIT_COLOR_BG, LV_RADIUS_CIRCLE));
-        lv_obj_align(h, LV_ALIGN_RIGHT_MID, -10, 0);
-        lv_obj_t *hl = kit_ui_label(h, "", KIT_COLOR_ON_COLOR, &kit_mono_20, 0);
+        lv_obj_t *c = button(s_cards_box, KIT_UI_CONTENT, TOUCH_H, KIT_COLOR_SURFACE, card_cb, v);
+        lv_obj_set_style_radius(c, 18, 0);
+        lv_obj_set_pos(c, 0, v * (TOUCH_H + 8));
+        gz_face(s_pz.card[v], buf, sizeof buf);
+        lv_obj_t *t = tokens(c, buf, &kit_sans_28, KIT_COLOR_TEXT, 0);
+        lv_obj_align(t, LV_ALIGN_LEFT_MID, 16, 0);
+        lv_obj_t *h = deco(kit_ui_rect(c, 40, 40, KIT_COLOR_BG, LV_RADIUS_CIRCLE));
+        lv_obj_align(h, LV_ALIGN_RIGHT_MID, -14, 0);
+        lv_obj_t *hl = kit_ui_label(h, "", KIT_COLOR_ON_COLOR, &kit_mono_26, 0);
         lv_obj_center(hl);
         s_card_hole[v] = h;
         s_card_hole_lbl[v] = hl;
@@ -647,43 +638,58 @@ static void build_cards(void)
     refresh_jogo();
 }
 
-static void build_jogo(lv_obj_t *tile)
+/* rótulo centrado num botão */
+static lv_obj_t *btn_label(lv_obj_t *b, const char *t, uint32_t color, const lv_font_t *font)
+{
+    lv_obj_t *l = kit_ui_label(b, t, color, font, 1);
+    lv_obj_center(l);
+    return l;
+}
+
+/* página CÓDIGO: o palpite da rodada, com alvos grandes */
+static void build_codigo(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
 
     lv_obj_t *st = box(tile);
     lv_obj_set_size(st, KIT_UI_CONTENT, 26);
-    lv_obj_set_pos(st, KIT_UI_PAD, 0);
+    lv_obj_set_pos(st, KIT_UI_PAD, 4);
     kit_ui_flex(st, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 8);
     s_st_round = kit_ui_label(st, "", KIT_COLOR_TEXT, &kit_mono_20, 1);
     s_st_tests = kit_ui_label(st, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
+    lv_obj_t *hint = kit_ui_label(tile, "TESTES " KIT_ICON_CHEVRON, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    lv_obj_align(hint, LV_ALIGN_TOP_RIGHT, -KIT_UI_PAD, 8);
 
     for (int i = 0; i < GZ_SHAPES; i++) {
-        s_disc[i] = make_disc(tile, i, disc_cb, &s_disc_lbl[i]);
-        lv_obj_set_pos(s_disc[i], KIT_UI_PAD + i * 116, 32);
+        s_disc[i] = make_disc(tile, i, DISC_CODE_H, disc_cb, &s_disc_lbl[i]);
+        lv_obj_set_pos(s_disc[i], KIT_UI_PAD + i * 116, 40);
     }
 
-    s_cards_box = box(tile);
-    lv_obj_set_size(s_cards_box, KIT_UI_CONTENT, 136);
-    lv_obj_set_pos(s_cards_box, KIT_UI_PAD, 140);
+    int half = (KIT_UI_CONTENT - 12) / 2;   /* 162 */
+    lv_obj_t *nb = button(tile, half, TOUCH_H, KIT_COLOR_SURFACE, notes_cb, 0);
+    lv_obj_set_pos(nb, KIT_UI_PAD, 176);
+    btn_label(nb, "NOTAS", KIT_COLOR_TEXT, &kit_mono_20);
 
-    /* rodapé: notas · nova rodada · ARRISCAR */
-    lv_obj_t *nb = button(tile, 64, 64, KIT_COLOR_SURFACE, notes_cb, 0);
-    lv_obj_set_pos(nb, KIT_UI_PAD, 286);
-    notes_icon(nb);
+    s_btn_round = button(tile, half, TOUCH_H, KIT_COLOR_SURFACE, round_cb, 0);
+    lv_obj_set_pos(s_btn_round, KIT_UI_PAD + half + 12, 176);
+    btn_label(s_btn_round, "NOVA RODADA", KIT_COLOR_TEXT, &kit_mono_20);
 
-    s_btn_round = button(tile, 64, 64, KIT_COLOR_SURFACE, round_cb, 0);
-    lv_obj_set_pos(s_btn_round, KIT_UI_PAD + 72, 286);
-    lv_obj_center(kit_ui_label(s_btn_round, KIT_ICON_PLUS, KIT_COLOR_TEXT, &kit_display_44, 0));
-
-    lv_obj_t *gb = button(tile, KIT_UI_CONTENT - 144, 64, T_ACCENT, guess_open_cb, 0);
-    lv_obj_set_pos(gb, KIT_UI_PAD + 144, 286);
+    lv_obj_t *gb = button(tile, KIT_UI_CONTENT, TOUCH_H, T_ACCENT, guess_open_cb, 0);
+    lv_obj_set_pos(gb, KIT_UI_PAD, 268);
     lv_obj_t *row = box(gb);
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(row, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, 0, 10);
+    kit_ui_flex(row, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, 0, 12);
     mini_lock(row, KIT_COLOR_ON_YELLOW);
     kit_ui_label(row, "ARRISCAR", KIT_COLOR_ON_YELLOW, &kit_mono_26, 1);
     lv_obj_center(row);
+}
+
+static void build_testes(lv_obj_t *tile)
+{
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    s_cards_box = box(tile);
+    lv_obj_set_size(s_cards_box, KIT_UI_CONTENT, 4 * TOUCH_H + 3 * 8);
+    lv_obj_set_pos(s_cards_box, KIT_UI_PAD, 4);
 }
 
 /* ----------------------------------------------------------- AJUSTE */
@@ -896,23 +902,13 @@ static void build_ver(void)
     round_t *R = &s_rounds[s_nr - 1];
     bool done = R->res[s_ver] != 0;
 
-    /* faixa do código que vai ser testado */
-    lv_obj_t *bar = deco(kit_ui_rect(s_ov_body, lv_pct(100), 64, KIT_COLOR_SURFACE, 16));
-    lv_obj_set_style_pad_left(bar, 14, 0);
-    lv_obj_set_style_pad_right(bar, 8, 0);
-    kit_ui_flex(bar, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
-    kit_ui_label(bar, done ? "TESTADO" : "VAI TESTAR", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
-    lv_obj_t *cs = box(bar);
-    lv_obj_set_size(cs, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(cs, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_END, 0, 4);
-    for (int i = 0; i < GZ_SHAPES; i++) code_shape(cs, i, R->code[i], SHAPE_IMG_MD, &kit_mono_26);
-
     lv_obj_t *sc = body_scroll();
-    lv_obj_set_style_pad_row(sc, 6, 0);
+    lv_obj_set_style_pad_row(sc, 8, 0);
     lv_obj_set_style_pad_bottom(sc, 0, 0);
     for (int o = 0; o < GZ_MAX_OPTS; o++) s_opt_row[o] = NULL;
     for (int o = 0; o < GZ_CARDS[card].nopt; o++) {
-        lv_obj_t *row = button(sc, lv_pct(100), 64, KIT_COLOR_SURFACE, opt_cb, o);
+        lv_obj_t *row = button(sc, lv_pct(100), TOUCH_H, KIT_COLOR_SURFACE, opt_cb, o);
+        lv_obj_set_style_radius(row, 18, 0);
         lv_obj_set_style_border_color(row, lv_color_hex(KIT_COLOR_LINE), 0);
         lv_obj_set_style_pad_left(row, 16, 0);
         lv_obj_set_style_pad_right(row, 14, 0);
@@ -925,35 +921,33 @@ static void build_ver(void)
         paint_opt(o);
     }
 
-    section(sc, "TESTES");
-    int nh = 0;
-    for (int r = 0; r < s_nr; r++) {
-        int res = s_rounds[r].res[s_ver];
-        if (!res) continue;
-        lv_obj_t *h = box(sc);
-        lv_obj_set_size(h, lv_pct(100), 48);
-        lv_obj_set_style_border_width(h, 2, 0);
-        lv_obj_set_style_border_side(h, LV_BORDER_SIDE_BOTTOM, 0);
-        lv_obj_set_style_border_color(h, lv_color_hex(KIT_COLOR_SURFACE_ALT), 0);
-        snprintf(buf, sizeof buf, "#0%d #1%d #2%d", s_rounds[r].code[0], s_rounds[r].code[1], s_rounds[r].code[2]);
-        lv_obj_t *t = tokens(h, buf, &kit_mono_26, KIT_COLOR_TEXT, 0);
-        lv_obj_align(t, LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_t *m = kit_ui_label(h, res == 1 ? "SIM" : "NÃO", res == 1 ? KIT_COLOR_GREEN : KIT_COLOR_RED,
-                                   &kit_mono_26, 1);
-        lv_obj_align(m, LV_ALIGN_RIGHT_MID, 0, 0);
-        nh++;
-    }
-    if (!nh) kit_ui_label(sc, "Ainda não testado.", KIT_COLOR_TEXT_MUTED, &kit_sans_22, 0);
-
+    /* rodapé: TESTAR com o código numa pastilha escura (o triângulo amarelo
+     * sumiria no fundo amarelo) — ou o motivo de não dar pra testar */
     if (done || used() >= TESTS_PER_ROUND || s_over) {
-        lv_obj_t *w = kit_ui_label(s_ov_body, done ? "JÁ TESTADO NESTA RODADA" : "3 TESTES POR RODADA. ABRA OUTRA.",
+        lv_obj_t *w = box(s_ov_body);
+        lv_obj_set_size(w, lv_pct(100), TOUCH_H);
+        lv_obj_t *l = kit_ui_label(w, done ? "JÁ TESTADO NESTA RODADA. VEJA EM NOTAS."
+                                           : "3 TESTES POR RODADA. ABRA OUTRA.",
                                    KIT_COLOR_TEXT_MUTED, &kit_mono_20, 1);
-        lv_obj_set_width(w, lv_pct(100));
-        lv_obj_set_style_text_align(w, LV_TEXT_ALIGN_CENTER, 0);
-        lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(l, lv_pct(100));
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        lv_obj_center(l);
     } else {
-        lv_obj_t *b = button(s_ov_body, lv_pct(100), 64, T_ACCENT, test_cb, 0);
-        lv_obj_center(kit_ui_label(b, "TESTAR", KIT_COLOR_ON_YELLOW, &kit_mono_26, 2));
+        lv_obj_t *b = button(s_ov_body, lv_pct(100), TOUCH_H, T_ACCENT, test_cb, 0);
+        lv_obj_set_style_radius(b, 18, 0);
+        lv_obj_t *row = box(b);
+        lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        kit_ui_flex(row, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, 0, 14);
+        lv_obj_center(row);
+        kit_ui_label(row, "TESTAR", KIT_COLOR_ON_YELLOW, &kit_mono_26, 2);
+        lv_obj_t *pill = deco(kit_ui_rect(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT, KIT_COLOR_BG, 12));
+        lv_obj_set_style_pad_left(pill, 12, 0);
+        lv_obj_set_style_pad_right(pill, 12, 0);
+        lv_obj_set_style_pad_top(pill, 8, 0);
+        lv_obj_set_style_pad_bottom(pill, 8, 0);
+        snprintf(buf, sizeof buf, "#0%d #1%d #2%d", R->code[0], R->code[1], R->code[2]);
+        tokens(pill, buf, &kit_mono_26, KIT_COLOR_TEXT, 0);
     }
 }
 
@@ -1006,12 +1000,12 @@ static void build_notes(void)
     ov_title_text("NOTAS");
 
     lv_obj_t *tabs = box(s_ov_body);
-    lv_obj_set_size(tabs, lv_pct(100), 64);
+    lv_obj_set_size(tabs, lv_pct(100), TOUCH_H);
     kit_ui_flex(tabs, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
     static const char *const TN[2] = { "TESTES", "NÚMEROS" };
     for (int t = 0; t < 2; t++) {
         bool on = t == s_notes_tab;
-        lv_obj_t *b = button(tabs, 164, 64, on ? KIT_COLOR_TEXT : KIT_COLOR_SURFACE, notes_tab_cb, t);
+        lv_obj_t *b = button(tabs, 162, TOUCH_H, on ? KIT_COLOR_TEXT : KIT_COLOR_SURFACE, notes_tab_cb, t);
         lv_obj_center(kit_ui_label(b, TN[t], on ? KIT_COLOR_BG : KIT_COLOR_TEXT, &kit_mono_20, 1));
     }
 
@@ -1073,29 +1067,28 @@ static void build_notes(void)
 
     /* NÚMEROS: uma forma por vez, botões grandes */
     lv_obj_t *st = box(s_ov_body);
-    lv_obj_set_size(st, lv_pct(100), 64);
+    lv_obj_set_size(st, lv_pct(100), TOUCH_H);
     kit_ui_flex(st, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
     for (int j = 0; j < GZ_SHAPES; j++) {
-        lv_obj_t *b = button(st, 104, 64, KIT_COLOR_SURFACE, num_tab_cb, j);
+        lv_obj_t *b = button(st, 104, TOUCH_H, KIT_COLOR_SURFACE, num_tab_cb, j);
         lv_obj_center(shape_img(b, SHAPE_IMG_SM, j, SHAPE_COLOR[j]));
         s_num_tab[j] = b;
     }
     lv_obj_t *g = box(s_ov_body);
-    lv_obj_set_size(g, lv_pct(100), 2 * 88 + 10);
+    lv_obj_set_size(g, lv_pct(100), 2 * TOUCH_H + 8);
     for (int d = 0; d < GZ_DIGITS + 1; d++) {
-        int x = (d % 3) * 116, y = (d / 3) * 98;
+        int x = (d % 3) * 116, y = (d / 3) * (TOUCH_H + 8);
         if (d == GZ_DIGITS) {
             lv_obj_t *lg = box(g);
-            lv_obj_set_size(lg, 104, 88);
+            lv_obj_set_size(lg, 104, TOUCH_H);
             lv_obj_set_pos(lg, x, y);
             kit_ui_flex(lg, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 0, 0);
-            kit_ui_label(lg, "TOQUE", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
             kit_ui_label(lg, "1 RISCA", KIT_COLOR_TEXT, &kit_mono_16, 1);
             kit_ui_label(lg, "2 CERTO", KIT_COLOR_TEXT, &kit_mono_16, 1);
             kit_ui_label(lg, "3 LIMPA", KIT_COLOR_TEXT, &kit_mono_16, 1);
             break;
         }
-        lv_obj_t *b = button(g, 104, 88, KIT_COLOR_SURFACE, num_cell_cb, d);
+        lv_obj_t *b = button(g, 104, TOUCH_H, KIT_COLOR_SURFACE, num_cell_cb, d);
         lv_obj_set_pos(b, x, y);
         lv_obj_set_style_radius(b, 18, 0);
         char t[4];
@@ -1189,9 +1182,9 @@ static void build_guess(void)
     kit_ui_label(s_ov_body, "Um palpite só. Errou, acabou.", KIT_COLOR_TEXT_MUTED, &kit_sans_22, 0);
 
     lv_obj_t *dr = box(s_ov_body);
-    lv_obj_set_size(dr, lv_pct(100), 98);
+    lv_obj_set_size(dr, lv_pct(100), DISC_GUESS_H);
     for (int i = 0; i < GZ_SHAPES; i++) {
-        s_gdisc[i] = make_disc(dr, i, gdisc_cb, &s_gdisc_lbl[i]);
+        s_gdisc[i] = make_disc(dr, i, DISC_GUESS_H, gdisc_cb, &s_gdisc_lbl[i]);
         lv_obj_set_pos(s_gdisc[i], i * 116, 0);
     }
 
@@ -1215,8 +1208,8 @@ static void build_guess(void)
     lv_obj_set_flex_grow(sp, 1);
 
     lv_obj_t *ft = box(s_ov_body);
-    lv_obj_set_size(ft, lv_pct(100), 64);
-    s_gconfirm = button(ft, 200, 64, T_ACCENT, confirm_cb, 0);
+    lv_obj_set_size(ft, lv_pct(100), TOUCH_H);
+    s_gconfirm = button(ft, 200, TOUCH_H, T_ACCENT, confirm_cb, 0);
     lv_obj_set_pos(s_gconfirm, 0, 0);
     lv_obj_t *row = box(s_gconfirm);
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -1224,8 +1217,8 @@ static void build_guess(void)
     mini_lock(row, KIT_COLOR_ON_YELLOW);
     kit_ui_label(row, "ARRISCAR", KIT_COLOR_ON_YELLOW, &kit_mono_26, 1);
     lv_obj_center(row);
-    lv_obj_t *cb = button(ft, KIT_UI_CONTENT - 208, 64, KIT_COLOR_SURFACE, cancel_cb, 0);
-    lv_obj_set_pos(cb, 208, 0);
+    lv_obj_t *cb = button(ft, KIT_UI_CONTENT - 212, TOUCH_H, KIT_COLOR_SURFACE, cancel_cb, 0);
+    lv_obj_set_pos(cb, 212, 0);
     lv_obj_center(kit_ui_label(cb, "CANCELAR", KIT_COLOR_TEXT, &kit_mono_20, 1));
 
     /* trava de 0,6 s: o toque que abriu a tela (ou um toque duplo) não confirma */
@@ -1315,7 +1308,7 @@ static void build_result(void)
     else             snprintf(buf, sizeof buf, "PUZZLE LIVRE · %s", DIFF_LABELS[s_diff]);
     section(sc, buf);
 
-    lv_obj_t *b = button(sc, lv_pct(100), 64, KIT_COLOR_SURFACE, again_cb, 0);
+    lv_obj_t *b = button(sc, lv_pct(100), TOUCH_H, KIT_COLOR_SURFACE, again_cb, 0);
     lv_obj_center(kit_ui_label(b, "NOVO PUZZLE", KIT_COLOR_TEXT, &kit_mono_26, 1));
 }
 
@@ -1605,11 +1598,12 @@ kit_err_t tool_init(kit_tool_ctx_t *ctx)
     lv_obj_set_style_bg_opa(s_screen, LV_OPA_COVER, 0);
     lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    kit_ui_shell_begin(&s_shell, s_screen, "GAZUA", T_ACCENT, 3);
+    kit_ui_shell_begin(&s_shell, s_screen, "GAZUA", T_ACCENT, 4);
     kit_ui_shell_tiles(&s_shell, on_page, NULL);
     build_ajuste(s_shell.tiles[0]);
-    build_jogo(s_shell.tiles[1]);
-    kit_ui_help_page(s_shell.tiles[2], "COMO JOGA", RULES);
+    build_codigo(s_shell.tiles[1]);
+    build_testes(s_shell.tiles[2]);
+    kit_ui_help_page(s_shell.tiles[3], "COMO JOGA", RULES);
 
     create_overlay();
     create_stamp();
