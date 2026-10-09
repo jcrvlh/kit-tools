@@ -20,11 +20,16 @@
  *  - Fora da linha do meio o símbolo esmaece por cor (recolor misturado com
  *    o fundo do rolo), não por sombra por cima: assim nada cobre o contorno
  *    amarelo, que é um objeto à parte desenhado por cima do rolo.
- *  - Som: o firmware toca bipe de até 14 ms a ~1/3 da amplitude e o resto
- *    (inclusive o tique do `fuse`) quase no máximo. A catraca e o "clac" são
- *    bipes de 12 ms — um por símbolo que cruza a linha, com intervalo mínimo —
- *    então ela desacelera sozinha junto com o rolo. Volume do KIT não é
- *    tocado: `set_volume` é global e não há como ler o valor pra devolver.
+ *  - Som do giro (normal): `KIT_SFX_BOTTLE_SPIN`, a catraca de madeira da
+ *    Garrafa (~1,9 s, desacelerando, fecha com um "parou"). Um efeito pronto
+ *    roda inteiro na task de áudio, com silêncio ativo entre os tiques; uma
+ *    catraca de bipes soltos vindos do timer deixava o DMA esvaziar entre um
+ *    e outro e estalava. Por isso o ÚLTIMO rolo para fixo em BOTTLE_MS,
+ *    casado com o "parou"; os dois primeiros seguem sorteados.
+ *  - Rápida: a catraca não cabe em ~1 s — giro em silêncio e só um "clac"
+ *    suave (bipe <= 14 ms, a faixa de ~1/3 da amplitude) por rolo.
+ *  - Volume do KIT não é tocado: `set_volume` é global e não há como ler o
+ *    valor pra devolver.
  *  - Barra de sorte: olha pra trás, nunca pra frente. O texto é sempre
  *    retrospectivo ("mais sorte que 91%") — nada de "tá devendo".
  */
@@ -72,9 +77,14 @@
 
 /* som: tudo <= 14 ms cai na faixa suave do firmware (~1/3 da amplitude) */
 #define SOFT_MS      12
-#define TICK_HZ      1100    /* catraca: um tique por símbolo que cruza a linha */
-#define TICK_GAP     3       /* quadros mínimos entre tiques (~60 ms) */
-#define CLAC_HZ      520     /* rolo parou */
+#define CLAC_HZ      520     /* rolo parou (só na rápida) */
+
+/* KIT_SFX_BOTTLE_SPIN: 20 tiques de 8 ms com silêncio abrindo de 14 a 140 ms
+ * (~1,83 s) e o "parou" de 80 ms. Somando os 80 ms que o amplificador leva pra
+ * acordar quando o áudio estava parado, o "parou" cai entre 1,83 e 1,99 s —
+ * o último rolo para no meio disso. */
+#define BOTTLE_MS    1900
+#define REEL_MIN_GAP 250     /* rolo do meio: ao menos isso depois do 1º e antes do último */
 
 /* Trinca: pentatônica de dó subindo duas oitavas, um trinado mi-sol e o dó
  * agudo pra fechar — uma nota por passo do timer. Cada nota são 2 bipes
@@ -89,11 +99,12 @@ static const uint16_t CASCADE_HZ[] = {
 #define CASCADE_N  ((int)(sizeof CASCADE_HZ / sizeof CASCADE_HZ[0]))
 
 /* Tempo de cada rolo, sorteado a cada giro: o 1º para em [first], cada
- * seguinte [gap] depois do anterior — a ordem esquerda → direita fica.
- * Voltas inteiras na faixa também sorteadas, então a velocidade muda de rolo
- * pra rolo e de giro pra giro. [normal, rápida]. */
+ * seguinte [gap] depois do anterior — a ordem esquerda → direita fica. No
+ * normal o último é fixo (BOTTLE_MS) e o do meio cai entre os dois. Voltas
+ * inteiras na faixa também sorteadas, então a velocidade muda de rolo pra
+ * rolo e de giro pra giro. [normal, rápida]. */
 static const int SPEED_FIRST[2][2] = { { 750, 1050 }, { 420, 600 } };
-static const int SPEED_GAP[2][2]   = { { 260, 600 },  { 150, 340 } };
+static const int SPEED_GAP[2][2]   = { { 0, 0 },      { 150, 340 } };   /* normal usa BOTTLE_MS */
 static const int SPEED_LOOPS[2][2] = { { 2, 5 },      { 1, 3 } };
 
 static const uint32_t SYM_COLOR[TRINCA_SYMBOLS] = {
@@ -136,7 +147,6 @@ typedef struct {
     lv_obj_t *img[SLOTS];
     int8_t    shown[SLOTS];     /* símbolo em cada imagem (-1 = nenhum ainda) */
     int8_t    shown_dim[SLOTS]; /* degrau de esmaecer aplicado */
-    int8_t    last_stop;        /* parada na linha no quadro anterior (catraca) */
     int32_t   pos;              /* px sobre a faixa, em [0, STRIP_PX) quando parado */
     int32_t   from, dist;       /* giro em curso */
     int       dur, frame;       /* em quadros de ANIM_MS */
@@ -159,7 +169,8 @@ static bool  s_spinning;
 static int   s_shake_idx;            /* 0 = gira chacoalhando */
 static int   s_speed_idx;            /* 0 = normal */
 static int   s_landed;               /* rolos que já pararam neste giro */
-static int   s_tick_cool;          /* quadros até a catraca poder tocar de novo */
+static uint64_t s_spin_t0;           /* início do giro (ms), pra casar com o som */
+static int   s_spin_fr;              /* contador de quadros, se não houver relógio */
 
 /* vida deste KIT */
 static int32_t s_life_spins, s_life_duplas, s_life_trincas, s_life_raras, s_life_rara1;
@@ -479,15 +490,26 @@ static void anim_stop(void)
     if (s_anim_timer) { lv_timer_delete(s_anim_timer); s_anim_timer = NULL; }
 }
 
+/* Quadro do giro pelo relógio, não pela contagem de chamadas: se a tela não
+ * segurar 50 fps o rolo pula quadros em vez de atrasar — e o último continua
+ * parando junto com o "parou" da catraca, que corre na task de áudio. */
+static int spin_frame(void)
+{
+    if (s_api && s_api->time)
+        return (int)((uint32_t)(s_api->time->get_millis() - s_spin_t0) / ANIM_MS);
+    return ++s_spin_fr;
+}
+
 static void anim_cb(lv_timer_t *t)
 {
     (void)t;
-    bool all_done = true, crossed = false;
+    bool all_done = true;
+    int now = spin_frame();
 
     for (int i = 0; i < TRINCA_REELS; i++) {
         reel_t *r = &s_reel[i];
         if (r->frame > r->dur + BOUNCE_FR) continue;
-        r->frame++;
+        r->frame = now > r->dur + BOUNCE_FR + 1 ? r->dur + BOUNCE_FR + 1 : now;
 
         int32_t p;
         if (r->frame <= r->dur) {
@@ -500,26 +522,17 @@ static void anim_cb(lv_timer_t *t)
         }
         r->pos = p;
 
-        int8_t stop = (int8_t)(wrap(p) / PITCH);
-        if (stop != r->last_stop && !r->landed) crossed = true;
-        r->last_stop = stop;
-
         if (r->frame >= r->dur && !r->landed) {
             r->landed = true;
             s_landed++;
-            soft(CLAC_HZ);
-            s_tick_cool = TICK_GAP;                   /* o clac não divide espaço com o tique */
-            crossed = false;
+            /* no normal o "parou" é da própria catraca; um bipe aqui ficaria
+             * na fila atrás dela e sairia atrasado */
+            if (s_speed_idx == 1) soft(CLAC_HZ);
         }
         if (r->frame > r->dur + BOUNCE_FR) r->pos = wrap(r->from + r->dist);
         else all_done = false;
         paint_reel(r);
     }
-
-    /* catraca: um tique por símbolo que cruza a linha, com intervalo mínimo —
-     * no começo satura em ~16/s, no fim desacelera junto com o rolo */
-    if (s_tick_cool > 0) s_tick_cool--;
-    else if (crossed) { soft(TICK_HZ); s_tick_cool = TICK_GAP; }
 
     if (all_done) { anim_stop(); finish_spin(); }
 }
@@ -539,10 +552,17 @@ static void start_spin(void)
     /* tempo e voltas de cada rolo: sorteados depois, sem olhar o resultado */
     const int *first = SPEED_FIRST[s_speed_idx], *gap = SPEED_GAP[s_speed_idx];
     const int *loops = SPEED_LOOPS[s_speed_idx];
-    int ms = 0;
+    int stop_ms[TRINCA_REELS];
+    stop_ms[0] = rng(first[0], first[1]);
+    if (s_speed_idx == 0) {
+        stop_ms[2] = BOTTLE_MS;
+        stop_ms[1] = rng(stop_ms[0] + REEL_MIN_GAP, BOTTLE_MS - REEL_MIN_GAP);
+    } else {
+        for (int i = 1; i < TRINCA_REELS; i++) stop_ms[i] = stop_ms[i - 1] + rng(gap[0], gap[1]);
+    }
     for (int i = 0; i < TRINCA_REELS; i++) {
         reel_t *r = &s_reel[i];
-        ms += i == 0 ? rng(first[0], first[1]) : rng(gap[0], gap[1]);
+        int ms = stop_ms[i];
         int cur = (int)(wrap(r->pos) / PITCH);
         int delta = ((int)s_target[i] - cur + TRINCA_STOPS) % TRINCA_STOPS;
         r->from = (int32_t)cur * PITCH;
@@ -550,10 +570,11 @@ static void start_spin(void)
         r->dur = ms / ANIM_MS;
         r->frame = 0;
         r->landed = false;
-        r->last_stop = (int8_t)cur;
     }
     s_landed = 0;
-    s_tick_cool = 0;
+    s_spin_fr = 0;
+    s_spin_t0 = (s_api && s_api->time) ? s_api->time->get_millis() : 0;
+    if (s_speed_idx == 0) kit_ui_sfx(KIT_SFX_BOTTLE_SPIN);
     anim_stop();
     s_anim_timer = lv_timer_create(anim_cb, ANIM_MS, NULL);
 }

@@ -18,6 +18,7 @@
     "display",
     "random",
     "storage",
+    "time",
     "audio",
     "imu"
   ],

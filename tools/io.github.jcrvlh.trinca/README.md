@@ -19,8 +19,9 @@ Abre sempre no **JOGO**.
 
 - **AJUSTE**
   - **Girar chacoalhando:** sim ou não.
-  - **Velocidade:** normal (1º rolo em 0,75–1,05 s, o último em até ~2,3 s)
-    ou rápida (mais ou menos a metade).
+  - **Velocidade:** normal (1º rolo em 0,75–1,05 s, o último sempre em 1,9 s,
+    junto com o "parou" da catraca) ou rápida (todos sorteados, ~1 s, sem
+    catraca).
   - **Histórico:** tabela com giros, duplas, trincas e raras de todos os giros
     deste KIT. A coluna **VOCÊ** mostra o que saiu e a coluna **ACASO**, a
     média que o acaso puro daria no mesmo número de giros. Embaixo vai o giro
@@ -93,17 +94,24 @@ dupla/trinca, que é um objeto à parte desenhado por cima, fica inteiro.
 ## Som
 
 O firmware toca bipes de **até 14 ms a ~1/3 da amplitude** e todo o resto
-(SFX prontos, bipes longos, o tique do `fuse`) quase no máximo. Por isso a
-Trinca só usa bipes de 12 ms:
+(SFX prontos, bipes longos, o tique do `fuse`) bem mais alto.
 
-- **Catraca:** um tique por símbolo que cruza a linha, com no mínimo ~60 ms
-  entre tiques. Ela satura no começo e desacelera sozinha junto com o rolo.
-- **Clac** quando cada rolo para, e duas notas na dupla.
+- **Catraca (normal):** `KIT_SFX_BOTTLE_SPIN`, a catraca de madeira da
+  Garrafa, que desacelera em ~1,9 s e fecha com um "parou". Ela roda inteira
+  na task de áudio, com silêncio ativo entre os tiques. A versão anterior
+  (bipes soltos disparados pelo timer, um por símbolo) estalava: entre um
+  bipe e outro o DMA de áudio esvazia. Por isso o **último rolo para fixo em
+  1,9 s**, casado com o "parou". Os dois primeiros seguem sorteados.
+- **Sincronia:** a animação anda pelo relógio (`time->get_millis`), não pela
+  contagem de quadros. Se a tela não segurar 50 fps, o rolo pula quadros em
+  vez de atrasar em relação ao som.
+- **Rápida:** a catraca não cabe em ~1 s. O giro é em silêncio, com um
+  "clac" suave (bipe de 12 ms) por rolo.
+- **Dupla:** duas notas suaves.
 - **Trinca:** cascata pentatônica de dó subindo duas oitavas, trinado mi-sol e
   dó agudo, uma nota por passo de 70 ms com o contorno piscando junto. Cada
-  nota são 2 bipes colados, pra ter corpo sem sair da faixa baixa. A fila de
-  bipes do firmware tem 6 lugares e não espera, então a sequência é
-  distribuída por um timer, nunca enfileirada de uma vez.
+  nota são 2 bipes suaves colados. A fila de bipes do firmware tem 6 lugares
+  e não espera, então a sequência é distribuída por um timer.
 - **Rara:** a mesma cascata, por trás da tela da estrela.
 
 O volume do KIT não é alterado: `set_volume` é global e não existe como ler o
