@@ -725,24 +725,49 @@ static void assist_cb(int idx, void *u)
     set_i32("gz_assist", idx);
 }
 
+/* DO DIA só existe se o relógio sabe a data e o puzzle de hoje ainda não foi jogado */
+static bool daily_available(void)
+{
+    int32_t t = today(NULL, NULL, NULL);
+    return t > 0 && t != s_daily_done;
+}
+
+/* sem puzzle do dia: o chip DO DIA apaga e não aceita toque, e o LIVRE aparece
+ * marcado. A preferência salva (s_next_mode) não muda: amanhã o DO DIA volta. */
+static void paint_mode_chips(void)
+{
+    if (!s_mode_chips.chip[0]) return;
+    bool avail = daily_available();
+    lv_obj_t *d = s_mode_chips.chip[0];
+    if (avail) {
+        lv_obj_add_flag(d, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_opa(d, LV_OPA_COVER, 0);
+    } else {
+        lv_obj_remove_flag(d, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_opa(d, LV_OPA_30, 0);
+    }
+    kit_ui_chips_select(&s_mode_chips, avail ? s_next_mode : 1);
+}
+
 static void refresh_ajuste(void)
 {
     if (!s_pend) return;
+    paint_mode_chips();
     bool show = true;
     if (in_progress()) {
         bool changed = s_next_diff != s_diff || s_next_mode != s_mode;
         lv_label_set_text(s_pend_lbl, changed ? "MUDANÇA SALVA. VALE NO PRÓXIMO PUZZLE."
                                               : "PARTIDA EM ANDAMENTO. REGRAS E PUZZLE VALEM NO PRÓXIMO.");
-        uint32_t c = changed ? T_ACCENT : KIT_COLOR_TEXT_MUTED;
+        uint32_t c = changed ? T_ACCENT : KIT_COLOR_TEXT;
         lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(c), 0);
         lv_obj_set_style_border_color(s_pend, lv_color_hex(changed ? T_ACCENT : KIT_COLOR_LINE), 0);
     } else if (s_next_mode == 0 && today(NULL, NULL, NULL) > 0 && today(NULL, NULL, NULL) == s_daily_done) {
-        lv_label_set_text(s_pend_lbl, "O PUZZLE DO DIA DE HOJE JÁ FOI. ESTE É LIVRE; AMANHÃ TEM OUTRO.");
-        lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+        lv_label_set_text(s_pend_lbl, "PUZZLE DO DIA RESOLVIDO. AMANHÃ TEM OUTRO; ATÉ LÁ, SÓ LIVRE.");
+        lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(KIT_COLOR_TEXT), 0);
         lv_obj_set_style_border_color(s_pend, lv_color_hex(KIT_COLOR_LINE), 0);
     } else if (s_next_mode == 0 && today(NULL, NULL, NULL) <= 0) {
         lv_label_set_text(s_pend_lbl, "SEM DATA NO RELÓGIO: SÓ PUZZLE LIVRE.");
-        lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+        lv_obj_set_style_text_color(s_pend_lbl, lv_color_hex(KIT_COLOR_TEXT), 0);
         lv_obj_set_style_border_color(s_pend, lv_color_hex(KIT_COLOR_LINE), 0);
     } else {
         show = false;
@@ -756,9 +781,13 @@ static void refresh_ajuste(void)
     else              lv_label_set_text(s_hist_val[2], "-");
 }
 
+/* rótulo de seção: kit_mono_20 na cor de texto — o cinza em 16 px não se lia na placa */
 static void section(lv_obj_t *p, const char *t)
 {
-    kit_ui_label(p, t, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    lv_obj_t *l = kit_ui_label(p, t, KIT_COLOR_TEXT, &kit_mono_20, 2);
+    lv_obj_set_style_pad_top(l, 6, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(l, lv_pct(100));
 }
 
 static void build_ajuste(lv_obj_t *tile)

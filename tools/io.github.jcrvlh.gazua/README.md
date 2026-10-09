@@ -24,8 +24,9 @@ cheias com a própria barra de título (o ◀ fecha a tela): **VERIFICADOR**,
   - **Regras:** FÁCIL (só regras sobre uma forma ou um par de formas) ou
     DIFÍCIL (inclui contagem, menor/maior, repetição e ordem).
   - **Puzzle:** DO DIA (o mesmo em todo KIT no mesmo dia, semente da data) ou
-    LIVRE. Sem data no relógio, ou se o do dia já foi jogado, o puzzle é livre
-    e um aviso diz isso.
+    LIVRE. Sem data no relógio, ou depois de resolver o do dia, o chip DO DIA
+    fica apagado e sem toque, o LIVRE aparece marcado e um aviso diz o porquê.
+    A preferência salva não muda: no dia seguinte o DO DIA volta.
   - **Ajuda:** risca sozinho as regras que algum teste já contradiz e, em
     ARRISCAR, confere o palpite contra os seus testes. Não olha a resposta.
     Vem desligada.
