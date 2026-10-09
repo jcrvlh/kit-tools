@@ -150,18 +150,25 @@ física da parede e custa objetos LVGL.
 
 A API das Tools **não expõe o acelerômetro cru**. Há só o chacoalhar, o gesto
 de inclinar da Testa (discreto) e o giroscópio integrado (`imu->gyro_*`, em
-centigraus, runtime ≥ 0.4.0). O Quique usa o **roll** do giroscópio (o pitch
-com Prumo):
+centigraus, runtime ≥ 0.4.0).
 
+- **Inclinação lateral = yaw + roll.** Inclinar pro lado (como um volante) é
+  girar em torno da linha de visão. Com o KIT a θ da vertical, esse giro cai
+  em **yaw · cos θ** (eixo normal à tela) + **roll · sin θ** (eixo da altura
+  da tela), com o mesmo sinal (eixos do QMI8658 conforme a calibração do
+  firmware: gx = altura, gy = largura, gz = normal). A soma funciona com o KIT
+  em pé, deitado ou no meio, com ganho entre 1× e 1,41×. A v1.0 lia só o roll
+  e a raquete quase não andava com o KIT em pé.
+- **Prumo** troca pro pitch (inclinar pra frente/trás).
 - **Deriva:** o ângulo integrado deriva com o tempo. O centro "vaza" devagar
   em direção ao ângulo atual (constante de ~30 s). Isso corrige a deriva sem
   atrapalhar a mão que segura uma inclinação por 1 ou 2 s.
 - **Sempre lido:** o giroscópio só integra quando é lido. Por isso a Tool lê a
   cada quadro enquanto a partida existe, inclusive na pausa e na escolha de
   carta; senão a rotação feita no meio tempo se perderia.
-- **Sentido não validado no hardware:** o sinal do roll no aparelho real não
-  foi conferido. Se a raquete fugir pro lado errado, use **DIREÇÃO:
-  INVERTIDA** no AJUSTE.
+- **Sentido:** se a raquete fugir pro lado errado, use **DIREÇÃO: INVERTIDA**
+  no AJUSTE. Efeito colateral da soma: com o KIT em pé, girar o corpo (em
+  torno da vertical do mundo) também mexe a raquete um pouco.
 
 ## Som
 

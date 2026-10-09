@@ -11,6 +11,12 @@
  *    do giroscópio integrado (`imu->gyro_poll`, centigraus), zerado ao
  *    começar. O giroscópio deriva um pouco com o tempo, então o "centro" vaza
  *    devagar em direção ao ângulo atual (quique_game.c, LEAK_DIV).
+ *  - Inclinação lateral = yaw + roll. Inclinar pro lado (como volante) gira
+ *    em torno da linha de visão; com o KIT a θ da vertical, isso cai em
+ *    yaw·cos θ (eixo normal à tela) + roll·sin θ (eixo da altura da tela),
+ *    os dois com o mesmo sinal. A soma acerta em qualquer pegada — em pé,
+ *    deitado ou no meio — com ganho entre 1× e 1,41×. Só o roll (v1.0) não
+ *    mexia a raquete com o KIT em pé.
  *  - O giroscópio é lido a cada quadro ENQUANTO a partida existe, inclusive
  *    na pausa e na escolha de carta: ele só integra quando é lido, e parar de
  *    ler perderia a rotação feita no meio tempo (o centro ficaria torto).
@@ -96,7 +102,7 @@ static int32_t s_hs[QQ_HS_N];
 
 static arena_state_t s_st;
 static qq_game_t     s_g;
-static int32_t s_roll, s_pitch;
+static int32_t s_lat, s_pitch;
 static bool    s_gyro_on;
 static bool    s_pick_armed;
 static int     s_rank = -1;
@@ -195,7 +201,7 @@ static bool gyro_ok(void) { return s_api && s_api->imu && s_api->imu->gyro_poll;
 
 static void gyro_begin(void)
 {
-    s_roll = s_pitch = 0;
+    s_lat = s_pitch = 0;
     if (!gyro_ok()) return;
     if (!s_gyro_on && s_api->imu->gyro_start) s_api->imu->gyro_start();
     else if (s_api->imu->gyro_rezero) s_api->imu->gyro_rezero();
@@ -211,8 +217,8 @@ static void gyro_end(void)
 static void gyro_read(void)
 {
     if (!s_gyro_on || !gyro_ok()) return;
-    int32_t pitch, roll;
-    if (s_api->imu->gyro_poll(NULL, &pitch, &roll, NULL)) { s_roll = roll; s_pitch = pitch; }
+    int32_t yaw, pitch, roll;
+    if (s_api->imu->gyro_poll(&yaw, &pitch, &roll, NULL)) { s_lat = yaw + roll; s_pitch = pitch; }
 }
 
 /* --- top-5 -------------------------------------------------------------- */
@@ -406,7 +412,7 @@ static void frame_cb(lv_timer_t *t)
     (void)t;
     gyro_read();
     if (s_st != A_PLAY) return;
-    uint32_t ev = qq_step(&s_g, s_roll, s_pitch);
+    uint32_t ev = qq_step(&s_g, s_lat, s_pitch);
     play_events(ev);
     if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
     if (ev & QE_SHIELD) toast("ESCUDO!", 600);

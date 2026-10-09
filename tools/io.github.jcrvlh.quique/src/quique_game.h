@@ -146,7 +146,7 @@ typedef struct {
     int32_t  tick;
 
     /* entrada */
-    int32_t zero_roll16, zero_pitch16;   /* centro (cdeg*16), vaza devagar */
+    int32_t zero_lat16, zero_pitch16;    /* centro (cdeg*16), vaza devagar */
     int32_t target;            /* centro-alvo da raquete (px*FP) */
     int32_t prev_target;
     int32_t delay[8];          /* Pena: atraso */
@@ -163,10 +163,11 @@ typedef struct {
 void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng);
 
 /**
- * Um passo de simulação (~16 ms). `roll`/`pitch` são os ângulos crus do
- * giroscópio em centigraus. Retorna QE_* (bitmask).
+ * Um passo de simulação (~16 ms). `lat` é a inclinação lateral e `pitch` a
+ * de frente/trás (Prumo), em centigraus, como a UI lê do giroscópio.
+ * Retorna QE_* (bitmask).
  */
-uint32_t qq_step(qq_game_t *g, int32_t roll_cdeg, int32_t pitch_cdeg);
+uint32_t qq_step(qq_game_t *g, int32_t lat_cdeg, int32_t pitch_cdeg);
 
 /** O KIT foi chacoalhado (Sacode / Freio). Retorna QE_*. */
 uint32_t qq_shake(qq_game_t *g);

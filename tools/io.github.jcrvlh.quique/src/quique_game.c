@@ -250,10 +250,10 @@ static int32_t rnd(qq_game_t *g, int32_t lo, int32_t hi)
     return g->rng ? g->rng(lo, hi) : lo;
 }
 
-static void read_input(qq_game_t *g, int32_t roll, int32_t pitch)
+static void read_input(qq_game_t *g, int32_t lat, int32_t pitch)
 {
-    int32_t raw = g->onu[QC_PRUMO] ? pitch : roll;
-    int32_t *z16 = g->onu[QC_PRUMO] ? &g->zero_pitch16 : &g->zero_roll16;
+    int32_t raw = g->onu[QC_PRUMO] ? pitch : lat;
+    int32_t *z16 = g->onu[QC_PRUMO] ? &g->zero_pitch16 : &g->zero_lat16;
     *z16 += (raw * 16 - *z16) / LEAK_DIV;
     int32_t tilt = (raw - *z16 / 16) * g->dir;
     if (g->onu[QC_ESPELHO]) tilt = -tilt;
@@ -451,7 +451,7 @@ static void step_ball(qq_game_t *g, int i, uint32_t *ev)
     if (b->y - r > QQ_H * QQ_FP) lose_ball(g, i, ev);
 }
 
-uint32_t qq_step(qq_game_t *g, int32_t roll_cdeg, int32_t pitch_cdeg)
+uint32_t qq_step(qq_game_t *g, int32_t lat_cdeg, int32_t pitch_cdeg)
 {
     if (g->state != QS_PLAY) return 0;
     uint32_t ev = 0;
@@ -469,7 +469,7 @@ uint32_t qq_step(qq_game_t *g, int32_t roll_cdeg, int32_t pitch_cdeg)
         }
     }
 
-    read_input(g, roll_cdeg, pitch_cdeg);
+    read_input(g, lat_cdeg, pitch_cdeg);
 
     for (int i = 0; i < QQ_MAX_BALLS && g->state == QS_PLAY; i++) step_ball(g, i, &ev);
 
