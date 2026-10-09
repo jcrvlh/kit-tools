@@ -1399,6 +1399,7 @@ static void create_stamp(void)
 #define INTRO_MS  1800
 #define LOCK_CX   (KIT_UI_SCREEN_W / 2)
 #define LOCK_CY   170
+#define LOCK_HEADROOM 40   /* folga acima do arco: ele sobe 26 px (até ~28 na passada) */
 
 /* notas do arpejo da vitória (ms desde o início, Hz) */
 static const uint16_t WIN_NOTES[][2] = {
@@ -1449,7 +1450,8 @@ static void intro_frame(int t)
         int x = (k >= 6) ? 0 : SHAKE[k] + (SHAKE[k + 1] - SHAKE[k]) * (p * 6 % 1000) / 1000;
         lv_obj_set_style_translate_x(s_lock, x, 0);
     }
-    lv_obj_set_style_opa(s_lock, (lv_opa_t)(255 * prog(t, 150, 400) / 1000), 0);
+    /* o cadeado não esmaece: a opacidade do LVGL vale peça por peça, e o arco
+     * apareceria através do corpo semitransparente */
     lv_obj_set_style_opa(s_intro_word, (lv_opa_t)(255 * prog(t, 600, 950) / 1000), 0);
     lv_obj_set_style_opa(s_intro_sub, (lv_opa_t)(255 * prog(t, 800, 1150) / 1000), 0);
 }
@@ -1522,17 +1524,19 @@ static void create_intro(void)
 
     s_flood = deco(kit_ui_rect(s_intro, 0, 0, KIT_COLOR_GREEN, 0));
 
+    /* a caixa tem LOCK_HEADROOM livres em cima: o arco sobe até ~28 px (com a
+     * passada do ease_back) e o LVGL recorta o filho que sai da caixa do pai */
     s_lock = box(s_intro);
-    lv_obj_set_size(s_lock, 150, 170);
-    lv_obj_set_pos(s_lock, LOCK_CX - 75, LOCK_CY - 100);
+    lv_obj_set_size(s_lock, 150, 170 + LOCK_HEADROOM);
+    lv_obj_set_pos(s_lock, LOCK_CX - 75, LOCK_CY - 100 - LOCK_HEADROOM);
     s_shackle = box(s_lock);
     lv_obj_set_size(s_shackle, 88, 150);
-    lv_obj_set_pos(s_shackle, 31, 0);
+    lv_obj_set_pos(s_shackle, 31, LOCK_HEADROOM);
     lv_obj_set_style_border_width(s_shackle, 16, 0);
     lv_obj_set_style_border_side(s_shackle, LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_RIGHT, 0);
     lv_obj_set_style_radius(s_shackle, 44, 0);
     s_lock_body = deco(kit_ui_rect(s_lock, 130, 96, KIT_COLOR_TEXT, 16));
-    lv_obj_set_pos(s_lock_body, 10, 74);
+    lv_obj_set_pos(s_lock_body, 10, 74 + LOCK_HEADROOM);
     s_key_c = deco(kit_ui_rect(s_lock_body, 24, 24, KIT_COLOR_GREEN, LV_RADIUS_CIRCLE));
     lv_obj_align(s_key_c, LV_ALIGN_CENTER, 0, -10);
     s_key_s = deco(kit_ui_rect(s_lock_body, 12, 30, KIT_COLOR_GREEN, 4));
