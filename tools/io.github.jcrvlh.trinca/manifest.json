@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.trinca",
+  "name": "Trinca",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.3.1",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Caça-níquel honesto, sem aposta nem prêmio: toque ou chacoalhe e veja os três rolos pararem. Chances abertas, sorteio de verdade sem quase-acerto fabricado, e uma barra que mostra se a sua sessão está com mais ou menos sorte que o acaso puro. Três estrelas é a trinca rara: 1 em 4.096.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#E9B23C",
+  "home_icon": "spin",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "random",
+    "storage",
+    "audio",
+    "imu"
+  ],
+  "api_level": 1,
+  "assets": []
+}
