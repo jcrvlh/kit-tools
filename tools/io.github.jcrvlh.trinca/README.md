@@ -19,12 +19,15 @@ Abre sempre no **JOGO**.
 
 - **AJUSTE**
   - **Girar chacoalhando:** sim ou não.
-  - **Velocidade:** normal (~1,8 s até o último rolo) ou rápida (~1 s).
-  - **Na vida deste KIT:** giros, duplas, trincas e raras, cada um ao lado do
-    valor **esperado** pro mesmo número de giros, e o giro da 1ª trinca rara.
+  - **Velocidade:** normal (1º rolo em 0,75–1,05 s, o último em até ~2,3 s)
+    ou rápida (mais ou menos a metade).
+  - **Histórico:** tabela com giros, duplas, trincas e raras de todos os giros
+    deste KIT. A coluna **VOCÊ** mostra o que saiu e a coluna **ACASO**, a
+    média que o acaso puro daria no mesmo número de giros. Embaixo vai o giro
+    da 1ª trinca rara.
   - **Zerar histórico** (pede um segundo toque).
 - **JOGO:** placar da sessão, os 3 rolos, a barra de sorte e **GIRAR**.
-- **COMO JOGA:** regras, a tabela de chances e o que a barra diz (e não diz).
+- **COMO JOGA:** curto: regras, chances, a barra e o que ela não diz.
 
 ## Os rolos e as chances
 
@@ -76,12 +79,35 @@ de 50% vira "menos sorte que X%". Nunca mostra 0% nem 100%.
   "até agora" e o COMO JOGA diz com todas as letras que azar acumulado não
   aproxima a próxima trinca. Nada de "tá devendo".
 
+## Animação
+
+Cada rolo tem duração e número de voltas **sorteados a cada giro**, então a
+velocidade muda de rolo pra rolo e de giro pra giro. A ordem de parada
+(esquerda → direita) é sempre a mesma. Esse sorteio acontece depois do
+resultado e não olha pra ele, então a velocidade não entrega nada.
+
+Fora da linha do meio o símbolo **esmaece por cor**, misturado com o fundo do
+rolo, em vez de ter uma sombra por cima. Assim o contorno amarelo da
+dupla/trinca, que é um objeto à parte desenhado por cima, fica inteiro.
+
 ## Som
 
-Tique do `audio->fuse` como catraca enquanto os rolos giram. A tensão cai a
-cada rolo que para, então o tique desacelera junto. Tem um "clac" grave por
-parada, duas notas subindo na dupla, `KIT_SFX_REVEAL` + rolos piscando na
-trinca e `KIT_SFX_ONBOARD_DONE` + tela da estrela na trinca rara.
+O firmware toca bipes de **até 14 ms a ~1/3 da amplitude** e todo o resto
+(SFX prontos, bipes longos, o tique do `fuse`) quase no máximo. Por isso a
+Trinca só usa bipes de 12 ms:
+
+- **Catraca:** um tique por símbolo que cruza a linha, com no mínimo ~60 ms
+  entre tiques. Ela satura no começo e desacelera sozinha junto com o rolo.
+- **Clac** quando cada rolo para, e duas notas na dupla.
+- **Trinca:** cascata pentatônica de dó subindo duas oitavas, trinado mi-sol e
+  dó agudo, uma nota por passo de 70 ms com o contorno piscando junto. Cada
+  nota são 2 bipes colados, pra ter corpo sem sair da faixa baixa. A fila de
+  bipes do firmware tem 6 lugares e não espera, então a sequência é
+  distribuída por um timer, nunca enfileirada de uma vez.
+- **Rara:** a mesma cascata, por trás da tela da estrela.
+
+O volume do KIT não é alterado: `set_volume` é global e não existe como ler o
+valor original pra devolver na saída.
 
 ## Persistência
 

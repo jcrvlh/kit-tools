@@ -14,9 +14,17 @@
  *  - Animação: sem lv_anim na tabela de símbolos. Um lv_timer avança a posição
  *    de cada rolo (px, sobre a faixa de 32 × PITCH) com ease-out cúbico em
  *    inteiro e, no fim, um quique curto. A pintura é função só da posição:
- *    4 imagens por rolo, reposicionadas a cada quadro.
- *  - Som: o tique do `audio->fuse` faz a catraca — a tensão cai a cada rolo
- *    que para, o tique desacelera junto. Um "clac" grave marca cada parada.
+ *    4 imagens por rolo, reposicionadas a cada quadro. Duração e voltas de
+ *    cada rolo são sorteadas a cada giro (a ordem de parada fica), depois do
+ *    resultado e sem olhar pra ele — não dizem nada sobre o que vai sair.
+ *  - Fora da linha do meio o símbolo esmaece por cor (recolor misturado com
+ *    o fundo do rolo), não por sombra por cima: assim nada cobre o contorno
+ *    amarelo, que é um objeto à parte desenhado por cima do rolo.
+ *  - Som: o firmware toca bipe de até 14 ms a ~1/3 da amplitude e o resto
+ *    (inclusive o tique do `fuse`) quase no máximo. A catraca e o "clac" são
+ *    bipes de 12 ms — um por símbolo que cruza a linha, com intervalo mínimo —
+ *    então ela desacelera sozinha junto com o rolo. Volume do KIT não é
+ *    tocado: `set_volume` é global e não há como ler o valor pra devolver.
  *  - Barra de sorte: olha pra trás, nunca pra frente. O texto é sempre
  *    retrospectivo ("mais sorte que 91%") — nada de "tá devendo".
  */
@@ -43,8 +51,10 @@
 #define PITCH        80                                           /* uma parada */
 #define WIN_H        (2 * PITCH)                                  /* 160: 1 cheia + 2 meias */
 #define WIN_MID      (WIN_H / 2)
-#define SHADE_H      ((WIN_H - PITCH) / 2)                        /* 40 */
 #define REEL_RADIUS  16
+#define FRAME_W      4                                            /* contorno da dupla/trinca */
+#define DIM_STEPS    6                                            /* degraus de esmaecer */
+#define DIM_MIN      64                                           /* força do símbolo mais longe (/255) */
 #define STRIP_PX     (TRINCA_STOPS * PITCH)                       /* 2560 */
 #define SLOTS        4                                            /* casas desenhadas por rolo */
 
@@ -57,17 +67,34 @@
 #define ANIM_MS      20
 #define BOUNCE_FR    6
 #define BOUNCE_PX    10
-#define BLINK_MS     110
-#define BLINK_N      8
+#define BLINK_MS     70     /* passo da comemoração: 1 nota; o contorno pisca a cada 2 */
 #define SAVE_MS      1500
 
-#define FUSE_SPIN    200     /* tique rápido com os 3 rolos soltos */
-#define FUSE_STEP    65      /* cada rolo que para desacelera a catraca */
+/* som: tudo <= 14 ms cai na faixa suave do firmware (~1/3 da amplitude) */
+#define SOFT_MS      12
+#define TICK_HZ      1100    /* catraca: um tique por símbolo que cruza a linha */
+#define TICK_GAP     3       /* quadros mínimos entre tiques (~60 ms) */
+#define CLAC_HZ      520     /* rolo parou */
 
-/* duração (ms) de cada rolo e voltas inteiras na faixa — o rolo da direita
- * gira mais e para por último */
-static const int SPEED_MS[2][TRINCA_REELS]    = { { 900, 1280, 1660 }, { 520, 740, 960 } };
-static const int SPEED_LOOPS[2][TRINCA_REELS] = { { 2, 3, 4 },         { 1, 2, 3 } };
+/* Trinca: pentatônica de dó subindo duas oitavas, um trinado mi-sol e o dó
+ * agudo pra fechar — uma nota por passo do timer. Cada nota são 2 bipes
+ * suaves colados (24 ms): corpo de nota sem sair da faixa baixa de volume. A
+ * fila de bipes do firmware tem 6 lugares e não espera, então nunca mais que
+ * 3 bipes por passo. */
+static const uint16_t CASCADE_HZ[] = {
+    523, 659, 784, 1047, 1319, 1568, 2093,      /* dó mi sol, 2 oitavas */
+    2637, 3136, 2637, 3136,                     /* trinado */
+    2093,                                       /* dó, um tico mais longo */
+};
+#define CASCADE_N  ((int)(sizeof CASCADE_HZ / sizeof CASCADE_HZ[0]))
+
+/* Tempo de cada rolo, sorteado a cada giro: o 1º para em [first], cada
+ * seguinte [gap] depois do anterior — a ordem esquerda → direita fica.
+ * Voltas inteiras na faixa também sorteadas, então a velocidade muda de rolo
+ * pra rolo e de giro pra giro. [normal, rápida]. */
+static const int SPEED_FIRST[2][2] = { { 750, 1050 }, { 420, 600 } };
+static const int SPEED_GAP[2][2]   = { { 260, 600 },  { 150, 340 } };
+static const int SPEED_LOOPS[2][2] = { { 2, 5 },      { 1, 3 } };
 
 static const uint32_t SYM_COLOR[TRINCA_SYMBOLS] = {
     KIT_COLOR_BLUE,    /* círculo */
@@ -83,33 +110,24 @@ static const char *const SHAKE_LABELS[] = { "SIM", "NÃO" };
 static const char *const SPEED_LABELS[] = { "NORMAL", "RÁPIDA" };
 
 static const char RULES[] =
-    "1. Toque em GIRAR (ou nos rolos) ou chacoalhe o KIT. Os três rolos param "
-    "da esquerda pra direita.\n\n"
-    "2. Dois símbolos iguais na linha do meio: DUPLA. Três iguais: TRINCA. "
-    "Três estrelas: a TRINCA RARA.\n\n"
-    "3. Não tem aposta, ficha nem prêmio. É só você e a sorte.\n\n"
-    "CHANCES POR GIRO\n"
-    "Nada: 59,5%\n"
-    "Dupla: 38,2%\n"
-    "Trinca: 2,3% (1 em 43)\n"
-    "Trinca rara: 1 em 4.096\n\n"
-    "Cada rolo tem 32 paradas: 5 de cada símbolo e 2 estrelas. O sorteio "
-    "escolhe uma parada por rolo, uniforme e independente dos outros. A "
-    "animação só rola a faixa de verdade até lá: não existe quase-acerto "
-    "fabricado.\n\n"
-    "A BARRA DE SORTE\n"
-    "Dupla vale 1 ponto e trinca vale 3. A barra compara os seus pontos com "
-    "todos os resultados possíveis do mesmo número de giros. \"Mais sorte que "
-    "91%\" quer dizer que, no acaso puro, 91% das sessões do mesmo tamanho "
-    "fazem menos pontos que a sua (empate conta metade).\n\n"
-    "Ela mede a sessão, desde que você abriu a Trinca: aparece a partir de 20 "
-    "giros e, depois de 300, olha só os últimos 300.\n\n"
-    "O QUE A BARRA NÃO DIZ\n"
-    "Ela olha pra trás, nunca pra frente. Cada giro é independente: azar "
-    "acumulado não deixa a próxima trinca mais perto, e sorte acumulada não a "
-    "afasta. Ninguém \"tá devendo\".\n\n"
-    "No AJUSTE ficam os números da vida deste KIT, lado a lado com o "
-    "esperado.";
+    "Toque em GIRAR, nos rolos ou chacoalhe o KIT.\n\n"
+    "2 iguais na linha do meio: DUPLA.\n"
+    "3 iguais: TRINCA.\n"
+    "3 estrelas: TRINCA RARA.\n\n"
+    "Não tem aposta nem prêmio. É só sorte.\n\n"
+    "CHANCES\n"
+    "Dupla: 38%\n"
+    "Trinca: 1 em 43\n"
+    "Rara: 1 em 4.096\n\n"
+    "É sorteio de verdade: o resultado sai no toque e os rolos só mostram "
+    "onde ele caiu. Nada de quase-acerto armado.\n\n"
+    "A BARRA\n"
+    "Compara a sua sorte da sessão com o acaso puro (dupla vale 1, trinca "
+    "vale 3). Aparece depois de 20 giros.\n\n"
+    "Ela só olha pra trás. Azar acumulado não deixa a próxima trinca mais "
+    "perto: ninguém \"tá devendo\".\n\n"
+    "HISTÓRICO\n"
+    "No AJUSTE: o que saiu pra você ao lado do que o acaso daria.";
 
 /* ----------------------------------------------------------------------- */
 
@@ -117,6 +135,8 @@ typedef struct {
     lv_obj_t *win;
     lv_obj_t *img[SLOTS];
     int8_t    shown[SLOTS];     /* símbolo em cada imagem (-1 = nenhum ainda) */
+    int8_t    shown_dim[SLOTS]; /* degrau de esmaecer aplicado */
+    int8_t    last_stop;        /* parada na linha no quadro anterior (catraca) */
     int32_t   pos;              /* px sobre a faixa, em [0, STRIP_PX) quando parado */
     int32_t   from, dist;       /* giro em curso */
     int       dur, frame;       /* em quadros de ANIM_MS */
@@ -139,7 +159,7 @@ static bool  s_spinning;
 static int   s_shake_idx;            /* 0 = gira chacoalhando */
 static int   s_speed_idx;            /* 0 = normal */
 static int   s_landed;               /* rolos que já pararam neste giro */
-static int   s_fuse_tick;
+static int   s_tick_cool;          /* quadros até a catraca poder tocar de novo */
 
 /* vida deste KIT */
 static int32_t s_life_spins, s_life_duplas, s_life_trincas, s_life_raras, s_life_rara1;
@@ -150,7 +170,9 @@ static lv_obj_t *s_caption_lbl;
 static lv_obj_t *s_bar_fill;
 static lv_obj_t *s_bar_mark;
 
-static lv_obj_t *s_life_val[4];
+static lv_obj_t *s_frame[TRINCA_REELS];   /* contorno por cima de cada rolo */
+static lv_obj_t *s_life_you[4];
+static lv_obj_t *s_life_exp[4];
 static lv_obj_t *s_life_note;
 static lv_obj_t *s_reset_btn;
 static lv_obj_t *s_reset_lbl;
@@ -202,10 +224,8 @@ static void fmt_x10(char *out, size_t n, uint32_t x10)
     snprintf(out, n, "%s,%u", ip, (unsigned)(x10 % 10));
 }
 
-static void fuse(int16_t tension)
-{
-    if (s_api && s_api->audio) s_api->audio->fuse(tension);
-}
+/* bipe na faixa suave do firmware */
+static void soft(uint16_t hz) { kit_ui_beep(hz, SOFT_MS); }
 
 /* ------------------------------------------------------- persistência */
 
@@ -249,6 +269,19 @@ static int32_t wrap(int32_t p)
     return p < 0 ? p + STRIP_PX : p;
 }
 
+/* Cor do símbolo misturada com o fundo do rolo: degrau 0 = cor cheia (linha
+ * do meio), DIM_STEPS = só DIM_MIN/255 da cor. */
+static uint32_t dim_color(uint32_t c, int step)
+{
+    int f = 255 - step * (255 - DIM_MIN) / DIM_STEPS;
+    uint32_t out = 0;
+    for (int sh = 0; sh <= 16; sh += 8) {
+        int a = (int)((c >> sh) & 0xFF), b = (int)((KIT_COLOR_SURFACE >> sh) & 0xFF);
+        out |= (uint32_t)(b + (a - b) * f / 255) << sh;
+    }
+    return out;
+}
+
 /* Pinta o rolo a partir da posição: a parada c (= pos / PITCH) desce `frac`
  * px a partir do meio; a c+1 vem logo acima, a c-1 logo abaixo. */
 static void paint_reel(reel_t *r)
@@ -260,20 +293,31 @@ static void paint_reel(reel_t *r)
         int stop = (c + rel + TRINCA_STOPS) % TRINCA_STOPS;
         int sym = TRINCA_STRIP[stop];
         lv_obj_t *im = r->img[k];
+        int yc = WIN_MID - rel * PITCH + frac;
+
+        int d = yc > WIN_MID ? yc - WIN_MID : WIN_MID - yc;
+        int dim = d * DIM_STEPS / PITCH;
+        if (dim > DIM_STEPS) dim = DIM_STEPS;
+
         if (r->shown[k] != sym) {
             lv_image_set_src(im, SYM_IMG[sym]);
-            lv_obj_set_style_image_recolor(im, lv_color_hex(SYM_COLOR[sym]), 0);
             r->shown[k] = (int8_t)sym;
+            r->shown_dim[k] = -1;
         }
-        int yc = WIN_MID - rel * PITCH + frac;
+        if (r->shown_dim[k] != dim) {
+            lv_obj_set_style_image_recolor(im, lv_color_hex(dim_color(SYM_COLOR[sym], dim)), 0);
+            r->shown_dim[k] = (int8_t)dim;
+        }
         lv_obj_set_pos(im, (REEL_W - SYM_IMG_SIZE) / 2, yc - SYM_IMG_SIZE / 2);
     }
 }
 
 static void paint_highlight(bool on)
 {
-    for (int i = 0; i < TRINCA_REELS; i++)
-        lv_obj_set_style_border_width(s_reel[i].win, (on && s_hl[i]) ? 4 : 0, 0);
+    for (int i = 0; i < TRINCA_REELS; i++) {
+        if (on && s_hl[i]) lv_obj_remove_flag(s_frame[i], LV_OBJ_FLAG_HIDDEN);
+        else               lv_obj_add_flag(s_frame[i], LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* ease-out cúbico em 1/1024: 1 - (1 - x)^3 */
@@ -335,22 +379,21 @@ static void paint_life(void)
     static const uint8_t KIND[4] = { 0, TRINCA_DUPLA, TRINCA_TRINCA, TRINCA_RARA };
     int32_t got[4] = { s_life_spins, s_life_duplas, s_life_trincas, s_life_raras };
 
-    fmt_int(a, sizeof a, (uint32_t)s_life_spins);
-    lv_label_set_text(s_life_val[0], a);
-
-    for (int i = 1; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
+        fmt_int(a, sizeof a, (uint32_t)got[i]);
+        lv_label_set_text(s_life_you[i], a);
+        if (i == 0) continue;                       /* giros: o acaso não tem palpite */
         uint32_t odds = s_odds[KIND[i]];
         if (KIND[i] == TRINCA_TRINCA) odds += s_odds[TRINCA_RARA];   /* trinca inclui a rara */
-        fmt_int(a, sizeof a, (uint32_t)got[i]);
         fmt_x10(b, sizeof b, trinca_expected_x10((uint32_t)s_life_spins, odds));
-        lv_label_set_text_fmt(s_life_val[i], "%s  (ESP. %s)", a, b);
+        lv_label_set_text(s_life_exp[i], b);
     }
 
     if (s_life_rara1 > 0) {
         fmt_int(a, sizeof a, (uint32_t)s_life_rara1);
-        lv_label_set_text_fmt(s_life_note, "1ª TRINCA RARA NO GIRO %s", a);
+        lv_label_set_text_fmt(s_life_note, "A 1ª trinca rara saiu no giro %s.", a);
     } else {
-        lv_label_set_text(s_life_note, "TRINCA RARA: 1 EM 4.096 GIROS");
+        lv_label_set_text(s_life_note, "Trinca rara: 1 em 4.096 giros.");
     }
 }
 
@@ -361,26 +404,32 @@ static void blink_stop(void)
     if (s_blink_timer) { lv_timer_delete(s_blink_timer); s_blink_timer = NULL; }
 }
 
+static void cascade_note(int n)
+{
+    int reps = (n == CASCADE_N - 1) ? 3 : 2;
+    for (int i = 0; i < reps; i++) soft(CASCADE_HZ[n]);
+}
+
 static void blink_cb(lv_timer_t *t)
 {
     (void)t;
     s_blink_n++;
-    paint_highlight(s_blink_n % 2 == 0);
-    if (s_blink_n >= BLINK_N) { blink_stop(); paint_highlight(true); }
+    paint_highlight((s_blink_n / 2) % 2 == 0);
+    cascade_note(s_blink_n);
+    if (s_blink_n >= CASCADE_N - 1) { blink_stop(); paint_highlight(true); }
 }
 
 static void show_rare(void)
 {
     char n[16];
     fmt_int(n, sizeof n, (uint32_t)s_life_raras);
-    lv_label_set_text_fmt(s_ov_line, "1 em 4.096 giros.\nEssa é a nº %s na vida deste KIT.", n);
+    lv_label_set_text_fmt(s_ov_line, "1 em 4.096 giros.\nEssa é a nº %s deste KIT.", n);
     lv_obj_remove_flag(s_overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void finish_spin(void)
 {
     s_spinning = false;
-    fuse(-1);
     kit_ui_action_show(&s_action, true);
 
     uint8_t sym[TRINCA_REELS];
@@ -405,19 +454,16 @@ static void finish_spin(void)
     switch (k) {
     case TRINCA_DUPLA:
         paint_highlight(true);
-        kit_ui_beep(659, 45);
-        kit_ui_beep(988, 70);
+        soft(784);
+        soft(1175);
         break;
     case TRINCA_TRINCA:
-        kit_ui_sfx(KIT_SFX_REVEAL);
+    case TRINCA_RARA:
         s_blink_n = 0;
         paint_highlight(true);
+        cascade_note(0);
         s_blink_timer = lv_timer_create(blink_cb, BLINK_MS, NULL);
-        break;
-    case TRINCA_RARA:
-        kit_ui_sfx(KIT_SFX_ONBOARD_DONE);
-        paint_highlight(true);
-        show_rare();
+        if (k == TRINCA_RARA) show_rare();     /* a cascata toca por trás da tela da estrela */
         break;
     default:
         break;
@@ -436,7 +482,7 @@ static void anim_stop(void)
 static void anim_cb(lv_timer_t *t)
 {
     (void)t;
-    bool all_done = true;
+    bool all_done = true, crossed = false;
 
     for (int i = 0; i < TRINCA_REELS; i++) {
         reel_t *r = &s_reel[i];
@@ -454,20 +500,26 @@ static void anim_cb(lv_timer_t *t)
         }
         r->pos = p;
 
+        int8_t stop = (int8_t)(wrap(p) / PITCH);
+        if (stop != r->last_stop && !r->landed) crossed = true;
+        r->last_stop = stop;
+
         if (r->frame >= r->dur && !r->landed) {
             r->landed = true;
             s_landed++;
-            kit_ui_beep(196, 28);                     /* clac */
-            fuse((int16_t)(s_landed < TRINCA_REELS ? FUSE_SPIN - s_landed * FUSE_STEP : -1));
+            soft(CLAC_HZ);
+            s_tick_cool = TICK_GAP;                   /* o clac não divide espaço com o tique */
+            crossed = false;
         }
         if (r->frame > r->dur + BOUNCE_FR) r->pos = wrap(r->from + r->dist);
         else all_done = false;
         paint_reel(r);
     }
 
-    /* o tique precisa de um empurrão periódico (~10 Hz) enquanto queima */
-    if (s_landed < TRINCA_REELS && ++s_fuse_tick % 5 == 0)
-        fuse((int16_t)(FUSE_SPIN - s_landed * FUSE_STEP));
+    /* catraca: um tique por símbolo que cruza a linha, com intervalo mínimo —
+     * no começo satura em ~16/s, no fim desacelera junto com o rolo */
+    if (s_tick_cool > 0) s_tick_cool--;
+    else if (crossed) { soft(TICK_HZ); s_tick_cool = TICK_GAP; }
 
     if (all_done) { anim_stop(); finish_spin(); }
 }
@@ -484,19 +536,24 @@ static void start_spin(void)
     /* o resultado sai AGORA; a animação só leva a faixa até ele */
     trinca_spin(s_target, rng);
 
+    /* tempo e voltas de cada rolo: sorteados depois, sem olhar o resultado */
+    const int *first = SPEED_FIRST[s_speed_idx], *gap = SPEED_GAP[s_speed_idx];
+    const int *loops = SPEED_LOOPS[s_speed_idx];
+    int ms = 0;
     for (int i = 0; i < TRINCA_REELS; i++) {
         reel_t *r = &s_reel[i];
+        ms += i == 0 ? rng(first[0], first[1]) : rng(gap[0], gap[1]);
         int cur = (int)(wrap(r->pos) / PITCH);
         int delta = ((int)s_target[i] - cur + TRINCA_STOPS) % TRINCA_STOPS;
         r->from = (int32_t)cur * PITCH;
-        r->dist = (int32_t)(SPEED_LOOPS[s_speed_idx][i] * TRINCA_STOPS + delta) * PITCH;
-        r->dur = SPEED_MS[s_speed_idx][i] / ANIM_MS;
+        r->dist = (int32_t)(rng(loops[0], loops[1]) * TRINCA_STOPS + delta) * PITCH;
+        r->dur = ms / ANIM_MS;
         r->frame = 0;
         r->landed = false;
+        r->last_stop = (int8_t)cur;
     }
     s_landed = 0;
-    s_fuse_tick = 0;
-    fuse(FUSE_SPIN);
+    s_tick_cool = 0;
     anim_stop();
     s_anim_timer = lv_timer_create(anim_cb, ANIM_MS, NULL);
 }
@@ -577,14 +634,38 @@ static void section_label(lv_obj_t *p, const char *txt)
     kit_ui_label(p, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
 }
 
-static lv_obj_t *life_row(lv_obj_t *card, const char *name)
+/* Tabela do HISTÓRICO: nome | VOCÊ | ACASO, colunas de número à direita. */
+#define COL_YOU   92
+#define COL_EXP   104
+
+static lv_obj_t *cell(lv_obj_t *row, const char *txt, uint32_t color,
+                      const lv_font_t *font, int ls, int width)
+{
+    lv_obj_t *l = kit_ui_label(row, txt, color, font, ls);
+    if (width) {
+        lv_obj_set_width(l, width);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_RIGHT, 0);
+    } else {
+        lv_obj_set_flex_grow(l, 1);
+    }
+    return l;
+}
+
+static lv_obj_t *table_row(lv_obj_t *card)
 {
     lv_obj_t *row = kit_ui_box(card);
     lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    kit_ui_label(row, name, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
-    return kit_ui_label(row, "", KIT_COLOR_TEXT, &kit_mono_16, 0);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    return row;
+}
+
+static void life_row(lv_obj_t *card, int i, const char *name)
+{
+    lv_obj_t *row = table_row(card);
+    cell(row, name, KIT_COLOR_TEXT, &kit_sans_22, 0, 0);
+    s_life_you[i] = cell(row, "", KIT_COLOR_TEXT, &kit_sans_22, 0, COL_YOU);
+    s_life_exp[i] = cell(row, "", KIT_COLOR_TEXT, &kit_sans_22, 0, COL_EXP);
 }
 
 static void build_ajuste(lv_obj_t *tile)
@@ -608,16 +689,23 @@ static void build_ajuste(lv_obj_t *tile)
     section_label(p, "VELOCIDADE");
     kit_ui_chips(&s_speed_chips, p, SPEED_LABELS, 2, s_speed_idx, T_ACCENT, speed_cb, NULL);
 
-    section_label(p, "NA VIDA DESTE KIT");
+    section_label(p, "HISTÓRICO");
     lv_obj_t *card = kit_ui_rect(p, lv_pct(100), LV_SIZE_CONTENT, KIT_COLOR_SURFACE, 18);
     lv_obj_set_style_pad_all(card, 16, 0);
-    lv_obj_set_style_pad_row(card, 10, 0);
+    lv_obj_set_style_pad_row(card, 12, 0);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    s_life_val[0] = life_row(card, "GIROS");
-    s_life_val[1] = life_row(card, "DUPLAS");
-    s_life_val[2] = life_row(card, "TRINCAS");
-    s_life_val[3] = life_row(card, "RARAS");
-    s_life_note = kit_ui_label(card, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+
+    lv_obj_t *hdr = table_row(card);
+    cell(hdr, "", KIT_COLOR_TEXT, &kit_mono_16, 0, 0);
+    cell(hdr, "VOCÊ", KIT_COLOR_TEXT, &kit_mono_16, 2, COL_YOU);
+    cell(hdr, "ACASO", KIT_COLOR_TEXT, &kit_mono_16, 2, COL_EXP);
+
+    life_row(card, 0, "Giros");
+    life_row(card, 1, "Duplas");
+    life_row(card, 2, "Trincas");
+    life_row(card, 3, "Raras");
+    s_life_note = kit_ui_text(card, "", KIT_COLOR_TEXT, &kit_sans_22, KIT_UI_CONTENT - 32);
+    lv_obj_set_style_text_align(s_life_note, LV_TEXT_ALIGN_LEFT, 0);
 
     s_reset_btn = lv_obj_create(p);
     lv_obj_set_size(s_reset_btn, lv_pct(100), 84);
@@ -671,8 +759,6 @@ static void build_jogo(lv_obj_t *tile)
         reel_t *r = &s_reel[i];
         lv_obj_t *w = kit_ui_rect(tile, REEL_W, WIN_H, KIT_COLOR_SURFACE, REEL_RADIUS);
         lv_obj_set_pos(w, REELS_X + i * (REEL_W + REEL_GAP), REELS_Y);
-        lv_obj_set_style_border_color(w, lv_color_hex(T_ACCENT), 0);
-        lv_obj_set_style_border_width(w, 0, 0);
         kit_ui_tap(w, spin_cb, i);
         lv_obj_set_style_bg_opa(w, LV_OPA_COVER, LV_STATE_PRESSED);   /* rolo não "afunda" */
         r->win = w;
@@ -684,15 +770,21 @@ static void build_jogo(lv_obj_t *tile)
             r->img[k] = im;
             r->shown[k] = -1;
         }
-        /* sombras em cima e embaixo: a linha do meio é a que vale */
-        for (int k = 0; k < 2; k++) {
-            lv_obj_t *sh = kit_ui_rect(w, REEL_W, SHADE_H, KIT_COLOR_SURFACE, 0);
-            lv_obj_set_style_bg_opa(sh, LV_OPA_70, 0);
-            lv_obj_set_pos(sh, 0, k ? WIN_H - SHADE_H : 0);
-            lv_obj_remove_flag(sh, LV_OBJ_FLAG_CLICKABLE);
-        }
         r->pos = (int32_t)rng(0, TRINCA_STOPS - 1) * PITCH;
         paint_reel(r);
+    }
+
+    /* contorno da dupla/trinca: irmão criado DEPOIS dos rolos, então é
+     * desenhado por cima de tudo — nenhum símbolo come a linha */
+    for (int i = 0; i < TRINCA_REELS; i++) {
+        lv_obj_t *f = kit_ui_rect(tile, REEL_W, WIN_H, KIT_COLOR_BG, REEL_RADIUS);
+        lv_obj_set_pos(f, REELS_X + i * (REEL_W + REEL_GAP), REELS_Y);
+        lv_obj_set_style_bg_opa(f, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_color(f, lv_color_hex(T_ACCENT), 0);
+        lv_obj_set_style_border_width(f, FRAME_W, 0);
+        lv_obj_remove_flag(f, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(f, LV_OBJ_FLAG_HIDDEN);
+        s_frame[i] = f;
     }
 
     /* AZAR · legenda · SORTE, e a barra embaixo */
@@ -783,7 +875,6 @@ void tool_destroy(void)
     anim_stop();
     blink_stop();
     if (s_save_timer) { lv_timer_delete(s_save_timer); s_save_timer = NULL; }
-    if (s_api && s_spinning) fuse(-1);
     if (s_api && s_dirty) save_life();
     if (s_api && s_api->imu) s_api->imu->register_shake_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
@@ -793,7 +884,9 @@ void tool_destroy(void)
     s_speed_chips = (kit_ui_chips_t){0};
     s_action = (kit_ui_action_t){0};
     memset(s_reel, 0, sizeof s_reel);
-    memset(s_life_val, 0, sizeof s_life_val);
+    memset(s_life_you, 0, sizeof s_life_you);
+    memset(s_life_exp, 0, sizeof s_life_exp);
+    memset(s_frame, 0, sizeof s_frame);
     s_stats_lbl = s_caption_lbl = s_bar_fill = s_bar_mark = NULL;
     s_life_note = s_reset_btn = s_reset_lbl = NULL;
     s_overlay = s_ov_line = NULL;
