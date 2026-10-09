@@ -21,13 +21,17 @@
 #define QQ_W            368
 #define QQ_H            448
 #define QQ_FP           16           /* subpixels por pixel */
-#define QQ_WALL_Y       52           /* parede de cima (abaixo da faixa de vidas + pausa) */
+#define QQ_WALL_Y       12           /* parede de cima (a pausa fica dentro da mesa, no canto) */
 #define QQ_PRENSA_PX    40           /* quanto a parede desce por Prensa */
-#define QQ_PADDLE_Y     408          /* topo da raquete */
+#define QQ_PADDLE_Y     408          /* topo da raquete (inclinação) */
+#define QQ_STRIP_H      72           /* toque: faixa do dedo embaixo da mesa */
+#define QQ_STRIP_Y      (QQ_H - QQ_STRIP_H)                    /* 376 */
+#define QQ_PADDLE_Y_TOUCH (QQ_STRIP_Y - 10 - QQ_PADDLE_H)      /* 352 */
 #define QQ_PADDLE_H     14
 #define QQ_PADDLE_W     84           /* largura base */
 #define QQ_GEMEA_GAP    28           /* vão entre as duas raquetes da Gêmea */
-#define QQ_SHIELD_Y     438          /* linha do escudo */
+#define QQ_SHIELD_Y     438          /* linha do escudo (inclinação) */
+#define QQ_SHIELD_Y_TOUCH (QQ_PADDLE_Y_TOUCH + QQ_PADDLE_H + 4)  /* 370 */
 #define QQ_BALL_R       8            /* raio base */
 
 #define QQ_MAX_BALLS    2
@@ -110,7 +114,7 @@ typedef struct {
 } qq_inst_t;
 
 #define QQ_CTL_TILT  0   /* giroscópio: ângulo -> posição */
-#define QQ_CTL_TOUCH 1   /* toque: arraste relativo */
+#define QQ_CTL_TOUCH 1   /* toque: dedo na faixa de baixo, posição absoluta */
 
 typedef struct {
     qq_state_t state;
@@ -120,7 +124,10 @@ typedef struct {
     int8_t  ctl;            /* QQ_CTL_* */
     int32_t range_cdeg;     /* inclinação que leva a raquete à borda */
     int8_t  dir;            /* +1 / -1 (sentido do eixo no aparelho) */
-    int32_t gain_pct;       /* toque: px de raquete por px de dedo, % */
+    int32_t gain_pct;       /* toque: quanto a raquete passa do dedo, a partir do centro, % */
+    int32_t paddle_y;       /* topo da raquete (px) — depende do controle */
+    int32_t shield_y;       /* linha do escudo (px) */
+    int32_t floor_y;        /* a bola que passa daqui (topo) está perdida (px) */
 
     /* placar */
     int32_t score;
@@ -152,7 +159,7 @@ typedef struct {
 
     /* entrada */
     int32_t zero_lat16, zero_pitch16;    /* centro (cdeg*16), vaza devagar */
-    int32_t touch_x;           /* toque: alvo acumulado (px*FP) */
+    int32_t touch_x;           /* toque: último alvo (px*FP) — fica quando o dedo sai */
     int32_t target;            /* centro-alvo da raquete (px*FP) */
     int32_t prev_target;
     int32_t delay[8];          /* Pena: atraso */
@@ -172,12 +179,13 @@ void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng);
  * Um passo de simulação (~16 ms). Retorna QE_* (bitmask).
  *  - QQ_CTL_TILT:  `a` = inclinação lateral, `b` = frente/trás (Prumo), em
  *                  centigraus, como a UI lê do giroscópio;
- *  - QQ_CTL_TOUCH: `a`/`b` = quanto o dedo andou em x/y (px) desde o passo
- *                  anterior (0 com o dedo parado ou fora da tela).
+ *  - QQ_CTL_TOUCH: `a`/`b` = posição x/y (px) do dedo que controla, ou
+ *                  a < 0 sem dedo (a raquete fica onde está).
  */
 uint32_t qq_step(qq_game_t *g, int32_t a, int32_t b);
 
-/** Troca pro controle por toque (chame logo depois de qq_start). */
+/** Troca pro controle por toque: sobe a raquete e abre a faixa do dedo
+ *  (chame logo depois de qq_start). `gain_pct` 100 = raquete em cima do dedo. */
 void qq_use_touch(qq_game_t *g, int32_t gain_pct);
 
 /** O KIT foi chacoalhado (Sacode / Freio). Retorna QE_*. */

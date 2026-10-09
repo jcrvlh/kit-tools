@@ -55,12 +55,15 @@
 #define RESUME_MS       800
 #define TOAST_MS        900
 #define TOAST_ABOVE     72     /* aviso: px acima da raquete */
-#define TOUCH_JUMP_PX   60     /* salto entre 2 leituras acima disto = dedo novo, não arraste */
+#define TOUCH_JUMP_PX   90     /* salto entre 2 leituras acima disto = dedo novo */
+#define STRIP_GRAB      16     /* o toque que começa até aqui acima da faixa também pega */
 #define TOUCH_LOST_FRAMES 6    /* ~100 ms sem leitura = dedo levantou */
 #define CARD_GAP        10
 #define CARD_TOP        78     /* título + montagem em cima das cartas */
-#define BAND_H          (QQ_WALL_Y - 4)   /* faixa do topo: vidas + pausa */
-#define PAUSE_BTN       44     /* visual; com a área estendida passa de 56 */
+#define PAUSE_BTN       40     /* visual; com a área estendida passa de 56 */
+#define PAUSE_X         (W - KIT_UI_PAD - PAUSE_BTN)
+#define PAUSE_Y         (QQ_WALL_Y + 10)
+#define CORNER_Y        (PAUSE_Y + (PAUSE_BTN - LIFE_D) / 2)   /* vidas no canto de cima (inclinação) */
 #define LIFE_D          10
 #define MAX_PIPS        10     /* cargas na raquete: 6 cortadas + 4 freios */
 #define PIP_D           6
@@ -75,7 +78,7 @@
 
 static const char *const SENS_LABELS[] = { "SUAVE", "NORMAL", "VIVA" };
 static const int32_t     SENS_CDEG[]   = { 3500, 2500, 1500 };   /* inclinação até a borda */
-static const int32_t     SENS_GAIN[]   = { 100, 150, 220 };      /* toque: raquete/dedo, % */
+static const int32_t     SENS_GAIN[]   = { 100, 115, 140 };      /* toque: quanto a raquete passa do dedo */
 static const char *const CTL_LABELS[]  = { "TOQUE", "INCLINA\xC3\x87\xC3\x83O" };
 static const char *const DIR_LABELS[]  = { "NORMAL", "INVERTIDA" };
 
@@ -83,15 +86,16 @@ static const char RULES[] =
     "Ping-pong sozinho contra a parede. Segure o KIT na m\xC3\xA3o, com a tela "
     "pra voc\xC3\xAA.\n\n"
     "1. Toque em COME\xC3\x87" "AR.\n\n"
-    "2. Arraste o dedo pros lados em qualquer lugar da mesa: a raquete "
-    "acompanha o movimento. N\xC3\xA3o precisa tocar nela.\n\n"
+    "2. Deslize o dedo na faixa embaixo da mesa: a raquete fica em cima "
+    "dele. Se o dedo subir pra mesa sem soltar, ela continua seguindo.\n\n"
     "3. Cada rebatida vale ponto. N\xC3\xA3o deixe a bola passar: voc\xC3\xAA "
     "tem 3 vidas.\n\n"
     "4. A cada 10 rebatidas, escolha uma carta. Toda carta tem um lado bom "
     "(+) e um ruim (-), e os efeitos se acumulam at\xC3\xA9 o fim.\n\n"
     "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
     "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
-    "6. O bot\xC3\xA3o no canto de cima pausa e mostra as suas cartas ativas.\n\n"
+    "6. O bot\xC3\xA3o no canto de cima pausa e mostra as suas cartas ativas. "
+    "As vidas s\xC3\xA3o os pontinhos na faixa.\n\n"
     "No AJUSTE d\xC3\xA1 pra trocar o controle pra INCLINA\xC3\x87\xC3\x83O: "
     "segure o KIT reto ao come\xC3\xA7" "ar e incline pros lados. Se a raquete "
     "fugir pro lado errado, mude a DIRE\xC3\x87\xC3\x83O.";
@@ -116,9 +120,10 @@ static int32_t s_hs[QQ_HS_N];
 static arena_state_t s_st;
 static qq_game_t     s_g;
 static int32_t s_lat, s_pitch;
-/* toque cru: última leitura, deslocamento acumulado até o próximo passo */
-static bool    s_touch_on;
-static int32_t s_tx, s_ty, s_acc_dx, s_acc_dy;
+/* toque cru: o dedo que COMEÇA na faixa (ou em qualquer lugar, com Prumo)
+ * controla a raquete até levantar, mesmo se subir pra mesa */
+static bool    s_touch_on, s_capture;
+static int32_t s_tx, s_ty;
 static uint32_t s_frame, s_touch_frame;
 static bool    s_gyro_on;
 static bool    s_pick_armed;
@@ -133,7 +138,7 @@ static lv_obj_t *s_idle_best, *s_idle_top;
 /* arena: a mesa é a tela. Em cima, só as vidas (pontinhos) e o botão de
  * pausa; o placar é uma marca d'água atrás da bola; as cargas de
  * SACODE/FREIO são pontinhos na raquete; as cartas ficam na pausa. */
-static lv_obj_t *s_arena, *s_pause_btn, *s_life[QQ_MAX_LIVES], *s_watermark;
+static lv_obj_t *s_arena, *s_pause_btn, *s_lives, *s_life[QQ_MAX_LIVES], *s_watermark, *s_strip;
 static lv_obj_t *s_wall, *s_fog, *s_portal[2], *s_shield;
 static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N], *s_pip[MAX_PIPS];
 static lv_obj_t *s_toast;
@@ -290,7 +295,7 @@ static void toast_col(const char *txt, uint32_t ms, bool muted)
     lv_label_set_text(s_toast, txt);
     lv_obj_set_style_text_color(s_toast, lv_color_hex(muted ? KIT_COLOR_TEXT_MUTED : KIT_COLOR_TEXT), 0);
     /* logo acima da raquete: é onde o olho está, e não briga com o placar */
-    lv_obj_align(s_toast, LV_ALIGN_TOP_MID, 0, QQ_PADDLE_Y - TOAST_ABOVE);
+    lv_obj_align(s_toast, LV_ALIGN_TOP_MID, 0, s_g.paddle_y - TOAST_ABOVE);
     show(s_toast, true);
     kill_timer(&s_toast_timer);
     if (ms) s_toast_timer = lv_timer_create(toast_hide_cb, ms, NULL);
@@ -331,7 +336,7 @@ static void paint_pips(const int32_t *lp, int32_t pw, bool dark)
     int32_t x0 = lp[0] + (pw - (n * (PIP_D + 4) - 4)) / 2;
     for (int i = 0; i < MAX_PIPS; i++) {
         show(s_pip[i], i < n);
-        if (i < n) lv_obj_set_pos(s_pip[i], x0 + i * (PIP_D + 4), QQ_PADDLE_Y + (QQ_PADDLE_H - PIP_D) / 2);
+        if (i < n) lv_obj_set_pos(s_pip[i], x0 + i * (PIP_D + 4), g->paddle_y + (QQ_PADDLE_H - PIP_D) / 2);
     }
 }
 
@@ -352,9 +357,9 @@ static void paint_field(void)
     if (wy != s_drawn_wy || fy != s_drawn_fy) {
         set_rect(s_wall, 0, wy - 4, W, 4);
         if (fy > wy) set_rect(s_fog, 0, wy, W, fy - wy);
-        set_rect(s_portal[0], 0, wy, 4, QQ_PADDLE_Y - wy);
-        set_rect(s_portal[1], W - 4, wy, 4, QQ_PADDLE_Y - wy);
-        lv_obj_align(s_watermark, LV_ALIGN_TOP_MID, 0, (wy + QQ_PADDLE_Y) / 2 - WM_HALF_H);
+        set_rect(s_portal[0], 0, wy, 4, g->paddle_y - wy);
+        set_rect(s_portal[1], W - 4, wy, 4, g->paddle_y - wy);
+        lv_obj_align(s_watermark, LV_ALIGN_TOP_MID, 0, (wy + g->paddle_y) / 2 - WM_HALF_H);
         s_drawn_wy = wy;
         s_drawn_fy = fy;
     }
@@ -373,7 +378,7 @@ static void paint_field(void)
     for (int k = 0; k < 2; k++) {
         bool on = k < n && !dark;
         show(s_paddle[k], on);
-        if (on) lv_obj_set_pos(s_paddle[k], lp[k], QQ_PADDLE_Y);
+        if (on) lv_obj_set_pos(s_paddle[k], lp[k], g->paddle_y);
     }
     paint_pips(lp, pw, dark);
 
@@ -426,15 +431,24 @@ static void game_over(void);
 
 static bool touch_mode(void) { return s_ctl_idx == 0; }
 
+static bool on_pause_btn(int32_t x, int32_t y)
+{
+    return x >= PAUSE_X - 16 && y <= PAUSE_Y + PAUSE_BTN + 16;
+}
+
 /* leitura crua do toque (uma por amostra do sensor, só enquanto encostado) */
 static void on_touch(const kit_input_event_t *ev, void *user)
 {
     (void)user;
     if (!ev || ev->type != KIT_INPUT_TOUCH_DOWN) return;
-    if (s_st != A_PLAY || !touch_mode() || ev->y < BAND_H) { s_touch_on = false; return; }
+    if (s_st != A_PLAY || !touch_mode()) { s_touch_on = s_capture = false; return; }
     int32_t dx = ev->x - s_tx, dy = ev->y - s_ty;
     bool jump = dx > TOUCH_JUMP_PX || dx < -TOUCH_JUMP_PX || dy > TOUCH_JUMP_PX || dy < -TOUCH_JUMP_PX;
-    if (s_touch_on && !jump) { s_acc_dx += dx; s_acc_dy += dy; }
+    if (!s_touch_on || jump) {
+        /* dedo novo: decide se ele é o controle */
+        s_capture = s_g.onu[QC_PRUMO] ? !on_pause_btn(ev->x, ev->y)
+                                      : ev->y >= QQ_STRIP_Y - STRIP_GRAB;
+    }
     s_tx = ev->x;
     s_ty = ev->y;
     s_touch_on = true;
@@ -445,16 +459,12 @@ static void frame_cb(lv_timer_t *t)
 {
     (void)t;
     s_frame++;
-    if (s_touch_on && s_frame - s_touch_frame > TOUCH_LOST_FRAMES) s_touch_on = false;
+    if (s_touch_on && s_frame - s_touch_frame > TOUCH_LOST_FRAMES) s_touch_on = s_capture = false;
     gyro_read();
-    if (s_st != A_PLAY) { s_acc_dx = s_acc_dy = 0; return; }
+    if (s_st != A_PLAY) return;
     uint32_t ev;
-    if (touch_mode()) {
-        ev = qq_step(&s_g, s_acc_dx, s_acc_dy);
-        s_acc_dx = s_acc_dy = 0;
-    } else {
-        ev = qq_step(&s_g, s_lat, s_pitch);
-    }
+    if (touch_mode()) ev = qq_step(&s_g, s_capture ? s_tx : -1, s_ty);
+    else              ev = qq_step(&s_g, s_lat, s_pitch);
     play_events(ev);
     if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
     if (ev & QE_SHIELD) toast("ESCUDO!", 600);
@@ -474,6 +484,12 @@ static void new_game(void)
 {
     qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
     if (touch_mode()) qq_use_touch(&s_g, SENS_GAIN[s_sens_idx]);
+    /* toque: faixa do dedo embaixo, vidas dentro dela; inclinação: mesa
+     * cheia, vidas no canto de cima (espelhando a pausa) */
+    show(s_strip, touch_mode());
+    if (touch_mode()) lv_obj_set_pos(s_lives, KIT_UI_PAD + 4, QQ_STRIP_Y + (QQ_STRIP_H - LIFE_D) / 2);
+    else              lv_obj_set_pos(s_lives, KIT_UI_PAD + 4, CORNER_Y);
+    lv_obj_set_pos(s_shield, 0, s_g.shield_y);
 }
 
 static void calib_done(void)
@@ -481,9 +497,8 @@ static void calib_done(void)
     if (!touch_mode()) gyro_begin();   /* bloqueia ~80 ms: KIT parado */
     new_game();
     reset_drawn();
-    s_touch_on = false;
-    s_acc_dx = s_acc_dy = 0;
-    if (touch_mode()) toast_col("ARRASTE O DEDO", 1500, true);
+    s_touch_on = s_capture = false;
+    if (touch_mode()) toast_col("DEDO NA FAIXA", 1500, true);
     else              toast("VAI!", 600);
     paint_field();
     s_st = A_PLAY;
@@ -770,7 +785,7 @@ static void build_ajuste(lv_obj_t *tile)
     kit_ui_chips(&s_ctl_chips, p, CTL_LABELS, 2, s_ctl_idx, Q_ACCENT, ctl_cb, NULL);
     section_label(p, "SENSIBILIDADE");
     kit_ui_chips(&s_sens_chips, p, SENS_LABELS, 3, s_sens_idx, Q_ACCENT, sens_cb, NULL);
-    lv_obj_t *hint = kit_ui_label(p, "TOQUE: A RAQUETE ANDA 1x, 1,5x OU 2,2x O DEDO. "
+    lv_obj_t *hint = kit_ui_label(p, "TOQUE: A RAQUETE ANDA 1x, 1,15x OU 1,4x O DEDO, A PARTIR DO MEIO. "
                                      "INCLINA\xC3\x87\xC3\x83O: 35\xC2\xB0, 25\xC2\xB0 OU 15\xC2\xB0 AT\xC3\x89 A BORDA.",
                                   KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
@@ -935,30 +950,6 @@ static void build_arena(void)
     lv_obj_set_pos(s_arena, 0, 0);
     lv_obj_add_flag(s_arena, LV_OBJ_FLAG_CLICKABLE);
 
-    /* faixa do topo: vidas à esquerda, pausa à direita — e mais nada */
-    lv_obj_t *lives = kit_ui_box(s_arena);
-    lv_obj_set_size(lives, LV_SIZE_CONTENT, LIFE_D);
-    kit_ui_flex(lives, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 6);
-    lv_obj_set_pos(lives, KIT_UI_PAD + 4, (BAND_H - LIFE_D) / 2);
-    decor(lives);
-    for (int i = 0; i < QQ_MAX_LIVES; i++) {
-        s_life[i] = kit_ui_rect(lives, LIFE_D, LIFE_D, KIT_COLOR_TEXT, LIFE_D / 2);
-        decor(s_life[i]);
-    }
-
-    s_pause_btn = kit_ui_rect(s_arena, PAUSE_BTN, PAUSE_BTN, KIT_COLOR_BG, PAUSE_BTN / 2);
-    lv_obj_set_style_border_width(s_pause_btn, 2, 0);
-    lv_obj_set_style_border_color(s_pause_btn, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
-    lv_obj_set_pos(s_pause_btn, W - KIT_UI_PAD - PAUSE_BTN, (BAND_H - PAUSE_BTN) / 2);
-    kit_ui_tap(s_pause_btn, pause_btn_cb, 0);
-    lv_obj_set_ext_click_area(s_pause_btn, 10);
-    lv_obj_set_style_bg_color(s_pause_btn, lv_color_hex(KIT_COLOR_SURFACE_ALT), LV_STATE_PRESSED);
-    for (int k = 0; k < 2; k++) {   /* ícone ‖ */
-        lv_obj_t *bar = kit_ui_rect(s_pause_btn, 5, 16, KIT_COLOR_TEXT, 1);
-        lv_obj_align(bar, LV_ALIGN_CENTER, k ? 5 : -5, 0);
-        decor(bar);
-    }
-
     /* placar: marca d'água atrás de tudo da mesa */
     s_watermark = kit_ui_label(s_arena, "0", WM_COLOR, &kit_display_120, 0);
     decor(s_watermark);
@@ -970,7 +961,6 @@ static void build_arena(void)
         decor(s_portal[k]);
     }
     s_shield = kit_ui_rect(s_arena, W, 3, KIT_COLOR_BLUE, 0);
-    lv_obj_set_pos(s_shield, 0, QQ_SHIELD_Y);
     decor(s_shield);
 
     for (int i = 0; i < QQ_PREVIEW_N; i++) {
@@ -994,6 +984,43 @@ static void build_arena(void)
     /* neblina por cima das bolas */
     s_fog = kit_ui_rect(s_arena, W, 10, KIT_COLOR_SURFACE_ALT, 0);
     decor(s_fog);
+
+    /* toque: a faixa do dedo, por cima das bolas (a que passa da raquete
+     * some nela). Uma pegada no centro diz "o dedo vai aqui". */
+    s_strip = kit_ui_rect(s_arena, W, QQ_STRIP_H, KIT_COLOR_SURFACE, 0);
+    lv_obj_set_pos(s_strip, 0, QQ_STRIP_Y);
+    decor(s_strip);
+    for (int k = 0; k < 3; k++) {
+        lv_obj_t *grip = kit_ui_rect(s_strip, 44, 3, KIT_COLOR_LINE, 1);
+        lv_obj_align(grip, LV_ALIGN_CENTER, 0, (k - 1) * 8);
+        decor(grip);
+    }
+
+    /* vidas e pausa por cima de tudo: sempre visíveis, mesmo com Neblina */
+    s_lives = kit_ui_box(s_arena);
+    lv_obj_set_size(s_lives, LV_SIZE_CONTENT, LIFE_D);
+    kit_ui_flex(s_lives, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 6);
+    decor(s_lives);
+    for (int i = 0; i < QQ_MAX_LIVES; i++) {
+        s_life[i] = kit_ui_rect(s_lives, LIFE_D, LIFE_D, KIT_COLOR_TEXT, LIFE_D / 2);
+        decor(s_life[i]);
+    }
+
+    /* pausa: só contorno, a bola aparece através dele */
+    s_pause_btn = kit_ui_rect(s_arena, PAUSE_BTN, PAUSE_BTN, KIT_COLOR_BG, PAUSE_BTN / 2);
+    lv_obj_set_style_bg_opa(s_pause_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_pause_btn, 2, 0);
+    lv_obj_set_style_border_color(s_pause_btn, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+    lv_obj_set_pos(s_pause_btn, PAUSE_X, PAUSE_Y);
+    kit_ui_tap(s_pause_btn, pause_btn_cb, 0);
+    lv_obj_set_ext_click_area(s_pause_btn, 10);
+    lv_obj_set_style_bg_color(s_pause_btn, lv_color_hex(KIT_COLOR_SURFACE_ALT), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(s_pause_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    for (int k = 0; k < 2; k++) {   /* ícone ‖ */
+        lv_obj_t *bar = kit_ui_rect(s_pause_btn, 4, 14, KIT_COLOR_TEXT_MUTED, 1);
+        lv_obj_align(bar, LV_ALIGN_CENTER, k ? 4 : -4, 0);
+        decor(bar);
+    }
 
     s_toast = kit_ui_label(s_arena, "", KIT_COLOR_TEXT, &kit_mono_26, 3);
     lv_obj_set_style_text_align(s_toast, LV_TEXT_ALIGN_CENTER, 0);
@@ -1082,7 +1109,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_touch_on = false;
     s_action = (kit_ui_action_t){0};
     s_idle_best = s_idle_top = NULL;
-    s_arena = s_pause_btn = s_watermark = NULL;
+    s_arena = s_pause_btn = s_lives = s_watermark = s_strip = NULL;
     memset(s_life, 0, sizeof s_life);
     memset(s_pip, 0, sizeof s_pip);
     s_wall = s_fog = s_shield = s_toast = NULL;

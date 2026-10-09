@@ -9,8 +9,16 @@ no top-5.
 
 ## A mesa
 
-A tela de jogo é só a mesa. No topo, numa faixa fina, ficam só as **vidas**
-(pontinhos) e o **botão de pausa**. O resto se mostra dentro da mesa:
+A tela de jogo é só a mesa: a parede fica quase na borda de cima, e o
+**botão de pausa** (só contorno) fica no canto de cima, dentro da mesa.
+
+- **Toque:** embaixo da mesa há uma **faixa do dedo** (72 px, com uma pegada
+  no centro). A raquete fica logo acima dela, e as **vidas** (pontinhos)
+  ficam dentro dela. A bola que passa da raquete some na faixa.
+- **Inclinação:** sem faixa. A raquete fica embaixo e as vidas no canto de
+  cima, espelhando a pausa.
+
+O resto se mostra dentro da mesa:
 
 - **Placar:** número grande em marca d'água no centro da mesa, atrás da bola.
 - **Cargas** de SACODE (furinhos escuros) e FREIO (claros): pontinhos na
@@ -28,9 +36,9 @@ Abre sempre no **JOGO**.
 
 - **AJUSTE**
   - **Controle:** toque (padrão) ou inclinação.
-  - **Sensibilidade:** suave, normal ou viva. No toque, a raquete anda 1×,
-    1,5× ou 2,2× o que o dedo anda; na inclinação, 35°, 25° ou 15° levam até
-    a borda.
+  - **Sensibilidade:** suave, normal ou viva. No toque, a raquete passa do
+    dedo 1×, 1,15× ou 1,4× a partir do meio; na inclinação, 35°, 25° ou 15°
+    levam até a borda.
   - **Direção (só inclinação):** normal ou invertida (ver *Giroscópio*).
 - **JOGO:** a mesa (protagonista), o recorde, o top-5 e **COMEÇAR**.
 - **COMO JOGA:** as regras.
@@ -38,14 +46,16 @@ Abre sempre no **JOGO**.
 
 ## A partida
 
-1. **Começo:** no toque, a partida começa direto ("ARRASTE O DEDO"). Na
+1. **Começo:** no toque, a partida começa direto ("DEDO NA FAIXA"). Na
    inclinação, "SEGURE O KIT RETO" por ~1 s; o giroscópio zera e essa
    posição vira o centro.
 2. **Controle:**
-   - **Toque:** arraste **relativo**. O dedo corre em qualquer ponto da mesa
-     e a raquete anda o deslocamento × a sensibilidade, sem precisar tocar
-     nela, então o dedo não cobre a bola. Na borda, o dedo que continua não
-     acumula curso morto.
+   - **Toque:** posição **absoluta** na faixa do dedo. A raquete fica em
+     cima do dedo, ampliada a partir do centro pela sensibilidade (1× /
+     1,15× / 1,4×), pra chegar na borda antes de o dedo chegar no canto
+     arredondado. O toque que **começa** na faixa (ou até 16 px acima dela)
+     controla até o dedo sair, mesmo se subir pra mesa. Toque que começa na
+     mesa não mexe a raquete. Sem dedo, a raquete fica onde está.
    - **Inclinação:** o ângulo define a **posição** da raquete (não a
      velocidade). Zona morta pequena (0,8°) pra mão não tremer a raquete.
 3. **Saque:** a bola fica ~0,7 s na raquete e sai pra cima, com um ângulo
@@ -117,9 +127,9 @@ sensor.
 | Carta | + | - | Máx. |
 | :--- | :--- | :--- | :---: |
 | Espelho | 50% mais pontos | controle invertido | 1 |
-| Mola | a raquete corre mais (toque: ganho ×1,6; inclinação: 40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
+| Mola | a raquete corre mais (toque: ganho ×1,25; inclinação: 40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
 | Pena | movimento suavizado | ~100 ms de atraso | 1 |
-| Prumo | ganha 1 escudo | o eixo do controle troca (toque: arrastar pra cima/baixo; inclinação: frente/trás) | 1 |
+| Prumo | ganha 1 escudo | o eixo do controle troca (toque: a ALTURA do dedo, em qualquer lugar da tela, vira o lado — topo = esquerda; inclinação: frente/trás) | 1 |
 | Sacode | 3 cargas: chacoalhar dá cortada na bola que sobe (reta, rápida, +3 na parede) | a cada ~20 s a raquete escorrega pra um lado | 2 |
 | Freio | 2 cargas: chacoalhar dá ~2 s de câmera lenta na bola que desce | bola 25% mais rápida | 2 |
 
@@ -161,11 +171,11 @@ física da parede e custa objetos LVGL.
 
 O firmware entrega à Tool uma leitura crua (`KIT_INPUT_TOUCH_DOWN`, com x/y)
 por amostra do sensor (~30 ms) enquanto o dedo está na tela, e **nada** ao
-soltar. A Tool acumula o deslocamento entre leituras e entrega ao jogo a cada
-quadro. A soltura é detectada pela falta de leitura (~100 ms). Um salto de
-mais de 60 px entre duas leituras conta como dedo novo (o CST820 lê um ponto
-só e "pula" quando entra um segundo dedo), não como arraste. A faixa do topo
-(vidas + pausa) não move a raquete.
+soltar. A Tool guarda a última posição e entrega ao jogo a cada quadro. A
+soltura é detectada pela falta de leitura (~100 ms). Um salto de mais de
+90 px entre duas leituras conta como dedo novo (o CST820 lê um ponto só e
+"pula" quando entra um segundo dedo), e o dedo novo só controla se começou na
+faixa. Com Prumo, vale qualquer lugar, menos o botão de pausa.
 
 ## Giroscópio
 

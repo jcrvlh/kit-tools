@@ -154,7 +154,7 @@ int32_t qq_fog_y(const qq_game_t *g)
     int32_t wy = qq_wall_y(g);
     if (!g->onu[QC_NEBLINA]) return wy;
     int32_t pct = g->onu[QC_NEBLINA] >= 2 ? 50 : 35;
-    return wy + ((QQ_PADDLE_Y - wy) * pct) / 100;
+    return wy + ((g->paddle_y - wy) * pct) / 100;
 }
 
 bool qq_silent(const qq_game_t *g)  { return g->onu[QC_MUDO] > 0; }
@@ -166,7 +166,7 @@ bool qq_ball_visible(const qq_game_t *g, int i)
     if (!b->on) return false;
     if (g->blackout_t > 0) return false;
     if (g->onu[QC_FANTASMA] && !b->stuck) {
-        int32_t wy = qq_wall_y(g), field = QQ_PADDLE_Y - wy;
+        int32_t wy = qq_wall_y(g), field = g->paddle_y - wy;
         int32_t y = b->y / QQ_FP;
         int32_t lo = wy + (field * 40) / 100, hi = wy + (field * 65) / 100;
         if (g->onu[QC_FANTASMA] >= 2) { lo = wy + (field * 30) / 100; hi = wy + (field * 72) / 100; }
@@ -214,7 +214,7 @@ int qq_onus_active(const qq_game_t *g)
 
 static int32_t ball_y_on_paddle(const qq_game_t *g)
 {
-    return QQ_PADDLE_Y * QQ_FP - qq_ball_r(g) * QQ_FP;
+    return g->paddle_y * QQ_FP - qq_ball_r(g) * QQ_FP;
 }
 
 static void serve(qq_game_t *g, int i, int16_t steps)
@@ -240,7 +240,10 @@ void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng)
     g->next_pick = PICK_EVERY;
     g->paddle = g->target = g->prev_target = g->touch_x = (QQ_W / 2) * QQ_FP;
     g->ctl = QQ_CTL_TILT;
-    g->gain_pct = 150;
+    g->gain_pct = 100;
+    g->paddle_y = QQ_PADDLE_Y;
+    g->shield_y = QQ_SHIELD_Y;
+    g->floor_y = QQ_H;
     for (int i = 0; i < 8; i++) g->delay[i] = g->paddle;
     g->slip_wait = SLIP_EVERY;
     g->state = QS_PLAY;
@@ -275,16 +278,20 @@ static int32_t tilt_target(qq_game_t *g, int32_t lat, int32_t pitch, int32_t spa
     return (QQ_W / 2) * QQ_FP + (tilt * half) / range;
 }
 
-/* toque: arraste RELATIVO — o dedo corre em qualquer lugar da mesa e a
- * raquete anda o deslocamento × ganho (não precisa tocar nela) */
-static int32_t touch_target(qq_game_t *g, int32_t dx, int32_t dy, int32_t span)
+/* toque: posição ABSOLUTA — a raquete fica em cima do dedo. O ganho amplia a
+ * partir do centro pra raquete chegar na borda antes de o dedo chegar no
+ * canto arredondado da tela. Sem dedo, a raquete fica onde está. */
+static int32_t touch_target(qq_game_t *g, int32_t x, int32_t y, int32_t span)
 {
-    int32_t d = g->onu[QC_PRUMO] ? -dy : dx;          /* Prumo: arrastar pra cima = direita */
-    if (g->onu[QC_ESPELHO]) d = -d;
-    int32_t gain = g->gain_pct;
-    for (int i = 0; i < g->bon[QC_MOLA]; i++) gain = (gain * 160) / 100;
-    g->touch_x += (d * gain * QQ_FP) / 100;
-    /* preso na borda: o dedo que continua não acumula curso morto */
+    if (x >= 0) {
+        int32_t px = x;
+        if (g->onu[QC_PRUMO])            /* Prumo: a altura do dedo vira o lado */
+            px = ((y - QQ_WALL_Y) * QQ_W) / (QQ_H - QQ_WALL_Y);
+        if (g->onu[QC_ESPELHO]) px = QQ_W - px;
+        int32_t gain = g->gain_pct;
+        for (int i = 0; i < g->bon[QC_MOLA]; i++) gain = (gain * 125) / 100;
+        g->touch_x = (QQ_W / 2) * QQ_FP + ((px - QQ_W / 2) * gain * QQ_FP) / 100;
+    }
     int32_t lo = (span / 2) * QQ_FP, hi = (QQ_W - span / 2) * QQ_FP;
     g->touch_x = clamp(g->touch_x, lo, hi);
     return g->touch_x;
@@ -429,13 +436,13 @@ static void step_ball(qq_game_t *g, int i, uint32_t *ev)
     if (b->vy > 0 && g->bon[QC_METRONOMO] && !b->near_sent) {
         int32_t vy = (b->vy * sp) / 100;
         if (vy > 0) {
-            int32_t eta = (QQ_PADDLE_Y * QQ_FP - (b->y + r)) / vy;
+            int32_t eta = (g->paddle_y * QQ_FP - (b->y + r)) / vy;
             if (eta >= 0 && eta <= NEAR_STEPS) { b->near_sent = true; *ev |= QE_NEAR; }
         }
     }
 
     /* raquete(s) */
-    int32_t top = QQ_PADDLE_Y * QQ_FP;
+    int32_t top = g->paddle_y * QQ_FP;
     if (b->vy > 0 && py + r <= top + 2 * QQ_FP && b->y + r >= top) {
         int32_t lp[2];
         int n = qq_paddles(g, lp);
@@ -464,21 +471,26 @@ static void step_ball(qq_game_t *g, int i, uint32_t *ev)
     }
 
     /* escudo */
-    if (g->shield > 0 && b->vy > 0 && b->y + r >= QQ_SHIELD_Y * QQ_FP) {
-        b->y = QQ_SHIELD_Y * QQ_FP - r;
+    if (g->shield > 0 && b->vy > 0 && b->y + r >= g->shield_y * QQ_FP) {
+        b->y = g->shield_y * QQ_FP - r;
         b->vy = -iabs(b->vy);
         g->shield--;
         *ev |= QE_SHIELD;
         return;
     }
 
-    if (b->y - r > QQ_H * QQ_FP) lose_ball(g, i, ev);
+    if (b->y - r > g->floor_y * QQ_FP) lose_ball(g, i, ev);
 }
 
 void qq_use_touch(qq_game_t *g, int32_t gain_pct)
 {
     g->ctl = QQ_CTL_TOUCH;
     g->gain_pct = clamp(gain_pct, 50, 400);
+    g->paddle_y = QQ_PADDLE_Y_TOUCH;
+    g->shield_y = QQ_SHIELD_Y_TOUCH;
+    g->floor_y = QQ_STRIP_Y;
+    for (int i = 0; i < QQ_MAX_BALLS; i++)
+        if (g->ball[i].on && g->ball[i].stuck) g->ball[i].y = ball_y_on_paddle(g);
 }
 
 uint32_t qq_step(qq_game_t *g, int32_t a, int32_t b)
@@ -625,7 +637,7 @@ int qq_preview(const qq_game_t *g, int16_t xs[], int16_t ys[])
     if (!g->bon[QC_COMETA] || !src->on || src->stuck) return 0;
     int32_t x = src->x, y = src->y, vx = src->vx, vy = src->vy;
     int32_t r = qq_ball_r(g) * QQ_FP, wy = qq_wall_y(g) * QQ_FP;
-    int32_t sp = qq_speed_pct(g), top = QQ_PADDLE_Y * QQ_FP;
+    int32_t sp = qq_speed_pct(g), top = g->paddle_y * QQ_FP;
     bool portals = qq_portals(g);
     int n = 0;
     for (int s = 1; s <= QQ_PREVIEW_N * PREVIEW_GAP && n < QQ_PREVIEW_N; s++) {
