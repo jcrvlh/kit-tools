@@ -427,6 +427,70 @@ static void test_fuzz(void)
     }
 }
 
+static void test_touch(void)
+{
+    qq_game_t g;
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 150);
+    int32_t c = g.paddle;
+    qq_step(&g, 20, 0);                             /* dedo andou 20 px -> 30 px */
+    CHECK(g.paddle == c + 30 * QQ_FP);
+    qq_step(&g, 0, 0);                              /* dedo parado: raquete fica */
+    CHECK(g.paddle == c + 30 * QQ_FP);
+    qq_step(&g, 0, 0);
+    CHECK(g.paddle == c + 30 * QQ_FP);
+    /* borda: o excesso não vira curso morto */
+    qq_step(&g, 500, 0);
+    CHECK(g.paddle == (QQ_W - QQ_PADDLE_W / 2) * QQ_FP);
+    qq_step(&g, -10, 0);
+    CHECK(g.paddle == (QQ_W - QQ_PADDLE_W / 2) * QQ_FP - 15 * QQ_FP);
+
+    /* Espelho inverte; Prumo usa o arraste vertical (pra cima = direita) */
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 100);
+    qq_take(&g, QC_ESPELHO);
+    qq_step(&g, 10, 0);
+    CHECK(g.paddle == c - 10 * QQ_FP);
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 100);
+    qq_take(&g, QC_PRUMO);
+    qq_step(&g, 10, 0);
+    CHECK(g.paddle == c);
+    qq_step(&g, 0, -10);
+    CHECK(g.paddle == c + 10 * QQ_FP);
+    /* Mola acelera o arraste */
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 100);
+    qq_take(&g, QC_MOLA);
+    qq_step(&g, 10, 0);
+    CHECK(g.paddle > c + 16 * QQ_FP);              /* ônus: o tranco passa do ponto... */
+    qq_step(&g, 0, 0);
+    CHECK(g.paddle == c + 16 * QQ_FP);             /* ...e assenta no ganho ×1,6 */
+    /* a inclinação não mexe nada no modo toque (a UI manda deltas) */
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 150);
+    CHECK(g.ctl == QQ_CTL_TOUCH);
+}
+
+/* jogador de toque perfeito: arrasta o necessário pra ficar embaixo da bola */
+static void test_touch_rally(void)
+{
+    qq_game_t g;
+    s_seed = 11;
+    qq_start(&g, RANGE, 1, rng);
+    qq_use_touch(&g, 150);
+    uint32_t acc = 0;
+    for (int s = 0; s < 40000 && !(acc & QE_PICK); s++) {
+        int32_t need = (g.ball[0].x - g.paddle) / QQ_FP;   /* px de raquete */
+        int32_t dx = (need * 100) / 150;                    /* px de dedo */
+        if (dx > 12) dx = 12;
+        if (dx < -12) dx = -12;                             /* dedo humano: ~12 px por passo */
+        acc |= qq_step(&g, dx, 0);
+    }
+    CHECK(acc & QE_PICK);
+    CHECK(g.lives == QQ_START_LIVES);
+}
+
 int main(void)
 {
     test_trig();
@@ -446,6 +510,8 @@ int main(void)
     test_visibility();
     test_fx_text();
     test_hs();
+    test_touch();
+    test_touch_rally();
     test_fuzz();
     printf("%d ok, %d falharam\n", s_pass, s_fail);
     return s_fail ? 1 : 0;

@@ -1,6 +1,7 @@
 # Quique — `io.github.jcrvlh.quique`
 
-Ping-pong **sozinho** contra a parede, controlado **inclinando o KIT**. A cada
+Ping-pong **sozinho** contra a parede. A raquete segue o **dedo** (padrão)
+ou a **inclinação do KIT** (opcional no AJUSTE). A cada
 10 rebatidas o jogo pausa e abre **3 cartas**: cada uma traz um **bônus e um
 ônus juntos**, e os efeitos **acumulam** até o fim. Com 60 pontos, sua raquete
 é uma gambiarra de escolhas suas. Três vidas; acabou, o placar entra (ou não)
@@ -26,18 +27,27 @@ AJUSTE  ◄──►  JOGO  ◄──►  COMO JOGA  ◄──►  CARTAS
 Abre sempre no **JOGO**.
 
 - **AJUSTE**
-  - **Sensibilidade:** suave (35° até a borda), normal (25°) ou viva (15°).
-  - **Direção da raquete:** normal ou invertida (ver *Giroscópio*).
+  - **Controle:** toque (padrão) ou inclinação.
+  - **Sensibilidade:** suave, normal ou viva. No toque, a raquete anda 1×,
+    1,5× ou 2,2× o que o dedo anda; na inclinação, 35°, 25° ou 15° levam até
+    a borda.
+  - **Direção (só inclinação):** normal ou invertida (ver *Giroscópio*).
 - **JOGO:** a mesa (protagonista), o recorde, o top-5 e **COMEÇAR**.
 - **COMO JOGA:** as regras.
 - **CARTAS:** o banco inteiro, com bônus e ônus de cada carta.
 
 ## A partida
 
-1. **Calibração:** "SEGURE O KIT RETO" por ~1 s; o giroscópio zera e essa
+1. **Começo:** no toque, a partida começa direto ("ARRASTE O DEDO"). Na
+   inclinação, "SEGURE O KIT RETO" por ~1 s; o giroscópio zera e essa
    posição vira o centro.
-2. **Controle:** a inclinação lateral define a **posição** da raquete (não a
-   velocidade). Zona morta pequena (0,8°) pra mão não tremer a raquete.
+2. **Controle:**
+   - **Toque:** arraste **relativo**. O dedo corre em qualquer ponto da mesa
+     e a raquete anda o deslocamento × a sensibilidade, sem precisar tocar
+     nela, então o dedo não cobre a bola. Na borda, o dedo que continua não
+     acumula curso morto.
+   - **Inclinação:** o ângulo define a **posição** da raquete (não a
+     velocidade). Zona morta pequena (0,8°) pra mão não tremer a raquete.
 3. **Saque:** a bola fica ~0,7 s na raquete e sai pra cima, com um ângulo
    sorteado de até 15°.
 4. **Rebatida:** vale 1 ponto × o multiplicador. O ângulo de volta depende de
@@ -101,14 +111,15 @@ Abre sempre no **JOGO**.
 
 ### Controle
 
-As que só existem porque o KIT está na mão.
+Valem nos dois controles; Sacode e Freio usam o chacoalhar, que é outro
+sensor.
 
 | Carta | + | - | Máx. |
 | :--- | :--- | :--- | :---: |
 | Espelho | 50% mais pontos | controle invertido | 1 |
-| Mola | 40% menos inclinação até a borda | sem zona morta, tremor amplificado | 2 |
+| Mola | a raquete corre mais (toque: ganho ×1,6; inclinação: 40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
 | Pena | movimento suavizado | ~100 ms de atraso | 1 |
-| Prumo | ganha 1 escudo | o eixo vira frente/trás | 1 |
+| Prumo | ganha 1 escudo | o eixo do controle troca (toque: arrastar pra cima/baixo; inclinação: frente/trás) | 1 |
 | Sacode | 3 cargas: chacoalhar dá cortada na bola que sobe (reta, rápida, +3 na parede) | a cada ~20 s a raquete escorrega pra um lado | 2 |
 | Freio | 2 cargas: chacoalhar dá ~2 s de câmera lenta na bola que desce | bola 25% mais rápida | 2 |
 
@@ -145,6 +156,16 @@ inclinar não aciona.
 
 **Tijolos** (a parede vira tijolos que valem pontos) ficou pra v1.1: muda a
 física da parede e custa objetos LVGL.
+
+## Toque
+
+O firmware entrega à Tool uma leitura crua (`KIT_INPUT_TOUCH_DOWN`, com x/y)
+por amostra do sensor (~30 ms) enquanto o dedo está na tela, e **nada** ao
+soltar. A Tool acumula o deslocamento entre leituras e entrega ao jogo a cada
+quadro. A soltura é detectada pela falta de leitura (~100 ms). Um salto de
+mais de 60 px entre duas leituras conta como dedo novo (o CST820 lê um ponto
+só e "pula" quando entra um segundo dedo), não como arraste. A faixa do topo
+(vidas + pausa) não move a raquete.
 
 ## Giroscópio
 

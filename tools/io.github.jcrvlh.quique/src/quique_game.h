@@ -109,13 +109,18 @@ typedef struct {
     bool    onus_on;
 } qq_inst_t;
 
+#define QQ_CTL_TILT  0   /* giroscópio: ângulo -> posição */
+#define QQ_CTL_TOUCH 1   /* toque: arraste relativo */
+
 typedef struct {
     qq_state_t state;
     qq_rng_t   rng;
 
     /* ajustes da partida */
+    int8_t  ctl;            /* QQ_CTL_* */
     int32_t range_cdeg;     /* inclinação que leva a raquete à borda */
     int8_t  dir;            /* +1 / -1 (sentido do eixo no aparelho) */
+    int32_t gain_pct;       /* toque: px de raquete por px de dedo, % */
 
     /* placar */
     int32_t score;
@@ -147,6 +152,7 @@ typedef struct {
 
     /* entrada */
     int32_t zero_lat16, zero_pitch16;    /* centro (cdeg*16), vaza devagar */
+    int32_t touch_x;           /* toque: alvo acumulado (px*FP) */
     int32_t target;            /* centro-alvo da raquete (px*FP) */
     int32_t prev_target;
     int32_t delay[8];          /* Pena: atraso */
@@ -163,11 +169,16 @@ typedef struct {
 void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng);
 
 /**
- * Um passo de simulação (~16 ms). `lat` é a inclinação lateral e `pitch` a
- * de frente/trás (Prumo), em centigraus, como a UI lê do giroscópio.
- * Retorna QE_* (bitmask).
+ * Um passo de simulação (~16 ms). Retorna QE_* (bitmask).
+ *  - QQ_CTL_TILT:  `a` = inclinação lateral, `b` = frente/trás (Prumo), em
+ *                  centigraus, como a UI lê do giroscópio;
+ *  - QQ_CTL_TOUCH: `a`/`b` = quanto o dedo andou em x/y (px) desde o passo
+ *                  anterior (0 com o dedo parado ou fora da tela).
  */
-uint32_t qq_step(qq_game_t *g, int32_t lat_cdeg, int32_t pitch_cdeg);
+uint32_t qq_step(qq_game_t *g, int32_t a, int32_t b);
+
+/** Troca pro controle por toque (chame logo depois de qq_start). */
+void qq_use_touch(qq_game_t *g, int32_t gain_pct);
 
 /** O KIT foi chacoalhado (Sacode / Freio). Retorna QE_*. */
 uint32_t qq_shake(qq_game_t *g);

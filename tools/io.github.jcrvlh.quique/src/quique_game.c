@@ -40,9 +40,9 @@ const qq_card_info_t QQ_CARDS[QC_COUNT] = {
     [QC_FANTASMA]  = { "FANTASMA",  "ganha 1 vida",            "bola some no meio",         2 },
     [QC_TIRO]      = { "TIRO",      "centro da raquete vale 3", "borda com ângulo extremo",  1 },
     [QC_ESPELHO]   = { "ESPELHO",   "50% mais pontos",         "controle invertido",        1 },
-    [QC_MOLA]      = { "MOLA",      "inclina menos pra chegar", "tremor amplificado",       2 },
+    [QC_MOLA]      = { "MOLA",      "a raquete corre mais",    "tremor amplificado",       2 },
     [QC_PENA]      = { "PENA",      "movimento sem tremor",    "raquete com atraso",        1 },
-    [QC_PRUMO]     = { "PRUMO",     "ganha 1 escudo",          "eixo vira frente/trás",     1 },
+    [QC_PRUMO]     = { "PRUMO",     "ganha 1 escudo",          "o eixo do controle troca",     1 },
     [QC_SACODE]    = { "SACODE",    "chacoalhe: cortada (3x)", "a raquete escorrega",       2 },
     [QC_FREIO]     = { "FREIO",     "chacoalhe: câmera lenta", "bola 25% mais rápida",   2 },
     [QC_APAGAO]    = { "APAGÃO",    "ganha 1 vida",            "a tela apaga às vezes",     2 },
@@ -238,7 +238,9 @@ void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng)
     g->dir = dir < 0 ? -1 : 1;
     g->lives = QQ_START_LIVES;
     g->next_pick = PICK_EVERY;
-    g->paddle = g->target = g->prev_target = (QQ_W / 2) * QQ_FP;
+    g->paddle = g->target = g->prev_target = g->touch_x = (QQ_W / 2) * QQ_FP;
+    g->ctl = QQ_CTL_TILT;
+    g->gain_pct = 150;
     for (int i = 0; i < 8; i++) g->delay[i] = g->paddle;
     g->slip_wait = SLIP_EVERY;
     g->state = QS_PLAY;
@@ -250,7 +252,8 @@ static int32_t rnd(qq_game_t *g, int32_t lo, int32_t hi)
     return g->rng ? g->rng(lo, hi) : lo;
 }
 
-static void read_input(qq_game_t *g, int32_t lat, int32_t pitch)
+/* inclinação (giroscópio): ângulo -> posição */
+static int32_t tilt_target(qq_game_t *g, int32_t lat, int32_t pitch, int32_t span)
 {
     int32_t raw = g->onu[QC_PRUMO] ? pitch : lat;
     int32_t *z16 = g->onu[QC_PRUMO] ? &g->zero_pitch16 : &g->zero_lat16;
@@ -268,9 +271,30 @@ static void read_input(qq_game_t *g, int32_t lat, int32_t pitch)
     }
     tilt = clamp(tilt, -range, range);
 
-    int32_t span = paddle_span(g);
     int32_t half = ((QQ_W - span) / 2) * QQ_FP;
-    int32_t target = (QQ_W / 2) * QQ_FP + (tilt * half) / range;
+    return (QQ_W / 2) * QQ_FP + (tilt * half) / range;
+}
+
+/* toque: arraste RELATIVO — o dedo corre em qualquer lugar da mesa e a
+ * raquete anda o deslocamento × ganho (não precisa tocar nela) */
+static int32_t touch_target(qq_game_t *g, int32_t dx, int32_t dy, int32_t span)
+{
+    int32_t d = g->onu[QC_PRUMO] ? -dy : dx;          /* Prumo: arrastar pra cima = direita */
+    if (g->onu[QC_ESPELHO]) d = -d;
+    int32_t gain = g->gain_pct;
+    for (int i = 0; i < g->bon[QC_MOLA]; i++) gain = (gain * 160) / 100;
+    g->touch_x += (d * gain * QQ_FP) / 100;
+    /* preso na borda: o dedo que continua não acumula curso morto */
+    int32_t lo = (span / 2) * QQ_FP, hi = (QQ_W - span / 2) * QQ_FP;
+    g->touch_x = clamp(g->touch_x, lo, hi);
+    return g->touch_x;
+}
+
+static void read_input(qq_game_t *g, int32_t a, int32_t b)
+{
+    int32_t span = paddle_span(g);
+    int32_t target = (g->ctl == QQ_CTL_TOUCH) ? touch_target(g, a, b, span)
+                                              : tilt_target(g, a, b, span);
 
     if (g->slip_t > 0) {
         int32_t ph = SLIP_STEPS - g->slip_t;
@@ -451,7 +475,13 @@ static void step_ball(qq_game_t *g, int i, uint32_t *ev)
     if (b->y - r > QQ_H * QQ_FP) lose_ball(g, i, ev);
 }
 
-uint32_t qq_step(qq_game_t *g, int32_t lat_cdeg, int32_t pitch_cdeg)
+void qq_use_touch(qq_game_t *g, int32_t gain_pct)
+{
+    g->ctl = QQ_CTL_TOUCH;
+    g->gain_pct = clamp(gain_pct, 50, 400);
+}
+
+uint32_t qq_step(qq_game_t *g, int32_t a, int32_t b)
 {
     if (g->state != QS_PLAY) return 0;
     uint32_t ev = 0;
@@ -469,7 +499,7 @@ uint32_t qq_step(qq_game_t *g, int32_t lat_cdeg, int32_t pitch_cdeg)
         }
     }
 
-    read_input(g, lat_cdeg, pitch_cdeg);
+    read_input(g, a, b);
 
     for (int i = 0; i < QQ_MAX_BALLS && g->state == QS_PLAY; i++) step_ball(g, i, &ev);
 

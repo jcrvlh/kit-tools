@@ -2,11 +2,16 @@
  * @file main.c
  * @brief QUIQUE — ping-pong solo contra a parede, controlado inclinando o KIT.
  *
- * A raquete segue a inclinação lateral (giroscópio). A cada 10 rebatidas o
+ * A raquete segue o dedo (arraste relativo, padrão) ou a inclinação lateral
+ * (giroscópio, opcional no AJUSTE). A cada 10 rebatidas o
  * jogo pausa e oferece 3 cartas abertas, cada uma com um bônus E um ônus; os
  * efeitos acumulam. Três vidas; acabou, o placar vai (ou não) pro top-5.
  *
  * Decisões que não são óbvias:
+ *  - Toque: o firmware manda um TOUCH_DOWN cru por leitura do sensor (~30 ms)
+ *    enquanto o dedo está na tela e NADA ao soltar; a soltura é detectada
+ *    pela falta de leitura (TOUCH_LOST_FRAMES). O arraste é RELATIVO: o dedo
+ *    corre em qualquer ponto da mesa, sem cobrir a raquete nem a bola.
  *  - Não há leitura crua do acelerômetro na API das Tools: a inclinação vem
  *    do giroscópio integrado (`imu->gyro_poll`, centigraus), zerado ao
  *    começar. O giroscópio deriva um pouco com o tempo, então o "centro" vaza
@@ -50,6 +55,8 @@
 #define RESUME_MS       800
 #define TOAST_MS        900
 #define TOAST_ABOVE     72     /* aviso: px acima da raquete */
+#define TOUCH_JUMP_PX   60     /* salto entre 2 leituras acima disto = dedo novo, não arraste */
+#define TOUCH_LOST_FRAMES 6    /* ~100 ms sem leitura = dedo levantou */
 #define CARD_GAP        10
 #define CARD_TOP        78     /* título + montagem em cima das cartas */
 #define BAND_H          (QQ_WALL_Y - 4)   /* faixa do topo: vidas + pausa */
@@ -62,20 +69,22 @@
 #define WM_HALF_H       60     /* meia altura da linha do display_120 */
 
 #define K_SENS  "qq_sens"
+#define K_CTL   "qq_ctl"
 #define K_DIR   "qq_dir"
 #define K_HS    "qq_hs"        /* qq_hs0..qq_hs4 */
 
 static const char *const SENS_LABELS[] = { "SUAVE", "NORMAL", "VIVA" };
-static const int32_t     SENS_CDEG[]   = { 3500, 2500, 1500 };
+static const int32_t     SENS_CDEG[]   = { 3500, 2500, 1500 };   /* inclinação até a borda */
+static const int32_t     SENS_GAIN[]   = { 100, 150, 220 };      /* toque: raquete/dedo, % */
+static const char *const CTL_LABELS[]  = { "TOQUE", "INCLINA\xC3\x87\xC3\x83O" };
 static const char *const DIR_LABELS[]  = { "NORMAL", "INVERTIDA" };
 
 static const char RULES[] =
     "Ping-pong sozinho contra a parede. Segure o KIT na m\xC3\xA3o, com a tela "
     "pra voc\xC3\xAA.\n\n"
-    "1. Toque em COME\xC3\x87" "AR e segure o KIT reto: essa posi\xC3\xA7\xC3\xA3o "
-    "vira o centro.\n\n"
-    "2. Incline pros lados pra mover a raquete. Quanto mais inclina, mais "
-    "longe ela vai.\n\n"
+    "1. Toque em COME\xC3\x87" "AR.\n\n"
+    "2. Arraste o dedo pros lados em qualquer lugar da mesa: a raquete "
+    "acompanha o movimento. N\xC3\xA3o precisa tocar nela.\n\n"
     "3. Cada rebatida vale ponto. N\xC3\xA3o deixe a bola passar: voc\xC3\xAA "
     "tem 3 vidas.\n\n"
     "4. A cada 10 rebatidas, escolha uma carta. Toda carta tem um lado bom "
@@ -83,7 +92,9 @@ static const char RULES[] =
     "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
     "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
     "6. O bot\xC3\xA3o no canto de cima pausa e mostra as suas cartas ativas.\n\n"
-    "A raquete foge pro lado errado? No AJUSTE, mude a DIRE\xC3\x87\xC3\x83O.";
+    "No AJUSTE d\xC3\xA1 pra trocar o controle pra INCLINA\xC3\x87\xC3\x83O: "
+    "segure o KIT reto ao come\xC3\xA7" "ar e incline pros lados. Se a raquete "
+    "fugir pro lado errado, mude a DIRE\xC3\x87\xC3\x83O.";
 
 typedef enum { A_OFF = 0, A_CALIB, A_PLAY, A_PICK, A_PAUSE, A_RESUME, A_OVER } arena_state_t;
 
@@ -94,15 +105,21 @@ static lv_obj_t *s_screen;
 static kit_ui_shell_t  s_shell;
 static kit_ui_chips_t  s_sens_chips;
 static kit_ui_chips_t  s_dir_chips;
+static kit_ui_chips_t  s_ctl_chips;
 static kit_ui_action_t s_action;
 
 static int     s_sens_idx = 1;
+static int     s_ctl_idx;          /* 0 = toque, 1 = inclinação */
 static int     s_dir_idx;
 static int32_t s_hs[QQ_HS_N];
 
 static arena_state_t s_st;
 static qq_game_t     s_g;
 static int32_t s_lat, s_pitch;
+/* toque cru: última leitura, deslocamento acumulado até o próximo passo */
+static bool    s_touch_on;
+static int32_t s_tx, s_ty, s_acc_dx, s_acc_dy;
+static uint32_t s_frame, s_touch_frame;
 static bool    s_gyro_on;
 static bool    s_pick_armed;
 static int     s_rank = -1;
@@ -126,7 +143,7 @@ static lv_obj_t *s_pick, *s_pick_title, *s_pick_build, *s_card[QQ_MAX_OFFER];
 static lv_obj_t *s_card_name[QQ_MAX_OFFER], *s_card_bon[QQ_MAX_OFFER], *s_card_onu[QQ_MAX_OFFER];
 
 /* pausa = a montagem: uma linha (nome, +, -) por carta ativa */
-static lv_obj_t *s_pause, *s_pause_more;
+static lv_obj_t *s_pause, *s_pause_more, *s_pause_hint;
 static lv_obj_t *s_row_name[LIST_ROWS], *s_row_bon[LIST_ROWS], *s_row_onu[LIST_ROWS];
 
 /* fim */
@@ -407,12 +424,37 @@ static void play_events(uint32_t ev)
 static void open_pick(void);
 static void game_over(void);
 
+static bool touch_mode(void) { return s_ctl_idx == 0; }
+
+/* leitura crua do toque (uma por amostra do sensor, só enquanto encostado) */
+static void on_touch(const kit_input_event_t *ev, void *user)
+{
+    (void)user;
+    if (!ev || ev->type != KIT_INPUT_TOUCH_DOWN) return;
+    if (s_st != A_PLAY || !touch_mode() || ev->y < BAND_H) { s_touch_on = false; return; }
+    int32_t dx = ev->x - s_tx, dy = ev->y - s_ty;
+    bool jump = dx > TOUCH_JUMP_PX || dx < -TOUCH_JUMP_PX || dy > TOUCH_JUMP_PX || dy < -TOUCH_JUMP_PX;
+    if (s_touch_on && !jump) { s_acc_dx += dx; s_acc_dy += dy; }
+    s_tx = ev->x;
+    s_ty = ev->y;
+    s_touch_on = true;
+    s_touch_frame = s_frame;
+}
+
 static void frame_cb(lv_timer_t *t)
 {
     (void)t;
+    s_frame++;
+    if (s_touch_on && s_frame - s_touch_frame > TOUCH_LOST_FRAMES) s_touch_on = false;
     gyro_read();
-    if (s_st != A_PLAY) return;
-    uint32_t ev = qq_step(&s_g, s_lat, s_pitch);
+    if (s_st != A_PLAY) { s_acc_dx = s_acc_dy = 0; return; }
+    uint32_t ev;
+    if (touch_mode()) {
+        ev = qq_step(&s_g, s_acc_dx, s_acc_dy);
+        s_acc_dx = s_acc_dy = 0;
+    } else {
+        ev = qq_step(&s_g, s_lat, s_pitch);
+    }
     play_events(ev);
     if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
     if (ev & QE_SHIELD) toast("ESCUDO!", 600);
@@ -428,12 +470,21 @@ static void begin_play(void)
     paint_field();
 }
 
+static void new_game(void)
+{
+    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
+    if (touch_mode()) qq_use_touch(&s_g, SENS_GAIN[s_sens_idx]);
+}
+
 static void calib_done(void)
 {
-    gyro_begin();   /* bloqueia ~80 ms: KIT parado */
-    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
+    if (!touch_mode()) gyro_begin();   /* bloqueia ~80 ms: KIT parado */
+    new_game();
     reset_drawn();
-    toast("VAI!", 600);
+    s_touch_on = false;
+    s_acc_dx = s_acc_dy = 0;
+    if (touch_mode()) toast_col("ARRASTE O DEDO", 1500, true);
+    else              toast("VAI!", 600);
     paint_field();
     s_st = A_PLAY;
     if (!s_frame_timer) s_frame_timer = lv_timer_create(frame_cb, FRAME_MS, NULL);
@@ -447,11 +498,14 @@ static void begin_match(void)
     show(s_pick, false);
     show(s_pause, false);
     /* mesa já montada (bola na raquete) enquanto calibra; calib_done recomeça */
-    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
+    new_game();
     reset_drawn();
     paint_field();
-    toast("SEGURE O KIT RETO", 0);
     kit_ui_keep_awake(true);
+    lv_label_set_text(s_pause_hint, touch_mode() ? "TOQUE EM CONTINUAR QUANDO QUISER"
+                                                 : "CENTRALIZE O KIT ANTES DE VOLTAR");
+    if (touch_mode()) { calib_done(); return; }   /* toque não calibra nada */
+    toast("SEGURE O KIT RETO", 0);
     step_after(CALIB_MS, calib_done);
 }
 
@@ -689,6 +743,13 @@ static void section_label(lv_obj_t *p, const char *txt)
     kit_ui_label(p, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
 }
 
+static void ctl_cb(int idx, void *user)
+{
+    (void)user;
+    s_ctl_idx = idx;
+    set_i32(K_CTL, idx);
+}
+
 static void build_ajuste(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
@@ -705,13 +766,16 @@ static void build_ajuste(lv_obj_t *tile)
     lv_obj_set_scroll_dir(p, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
 
+    section_label(p, "CONTROLE");
+    kit_ui_chips(&s_ctl_chips, p, CTL_LABELS, 2, s_ctl_idx, Q_ACCENT, ctl_cb, NULL);
     section_label(p, "SENSIBILIDADE");
     kit_ui_chips(&s_sens_chips, p, SENS_LABELS, 3, s_sens_idx, Q_ACCENT, sens_cb, NULL);
-    lv_obj_t *hint = kit_ui_label(p, "SUAVE 35\xC2\xB0 \xC2\xB7 NORMAL 25\xC2\xB0 \xC2\xB7 VIVA 15\xC2\xB0 AT\xC3\x89 A BORDA",
+    lv_obj_t *hint = kit_ui_label(p, "TOQUE: A RAQUETE ANDA 1x, 1,5x OU 2,2x O DEDO. "
+                                     "INCLINA\xC3\x87\xC3\x83O: 35\xC2\xB0, 25\xC2\xB0 OU 15\xC2\xB0 AT\xC3\x89 A BORDA.",
                                   KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(hint, KIT_UI_CONTENT);
-    section_label(p, "DIRE\xC3\x87\xC3\x83O DA RAQUETE");
+    section_label(p, "DIRE\xC3\x87\xC3\x83O (S\xC3\x93 INCLINA\xC3\x87\xC3\x83O)");
     kit_ui_chips(&s_dir_chips, p, DIR_LABELS, 2, s_dir_idx, Q_ACCENT, dir_cb, NULL);
 }
 
@@ -811,9 +875,8 @@ static void build_pause(void)
     lv_obj_set_pos(s_pause, 0, 0);
     lv_obj_t *t = kit_ui_label(s_pause, "PAUSA", KIT_COLOR_TEXT, &kit_mono_26, 3);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 16);
-    lv_obj_t *hint = kit_ui_label(s_pause, "CENTRALIZE O KIT ANTES DE VOLTAR",
-                                  KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
-    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 52);
+    s_pause_hint = kit_ui_label(s_pause, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    lv_obj_align(s_pause_hint, LV_ALIGN_TOP_MID, 0, 52);
 
     /* a montagem: rola se não couber */
     int top = 82, bottom = H - KIT_UI_BTN_H - 2 * KIT_UI_BTN_MARGIN;
@@ -967,6 +1030,8 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     int32_t v = get_i32(K_SENS, 1);
     s_sens_idx = (v >= 0 && v <= 2) ? (int)v : 1;
+    v = get_i32(K_CTL, 0);
+    s_ctl_idx = (v == 1) ? 1 : 0;
     v = get_i32(K_DIR, 0);
     s_dir_idx = (v == 1) ? 1 : 0;
     hs_load();
@@ -990,6 +1055,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     paint_idle();
     if (s_api->imu && s_api->imu->register_shake_callback)
         s_api->imu->register_shake_callback(on_shake, NULL);
+    if (s_api->input) s_api->input->register_callback(on_touch, NULL);
 
     lv_obj_update_layout(s_screen);
     kit_ui_shell_open(&s_shell, 1);   /* abre no JOGO */
@@ -1006,11 +1072,14 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     kit_ui_keep_awake(false);
     if (s_api && s_api->imu && s_api->imu->register_shake_callback)
         s_api->imu->register_shake_callback(NULL, NULL);
+    if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
 
     s_shell = (kit_ui_shell_t){0};
     s_sens_chips = (kit_ui_chips_t){0};
     s_dir_chips = (kit_ui_chips_t){0};
+    s_ctl_chips = (kit_ui_chips_t){0};
+    s_touch_on = false;
     s_action = (kit_ui_action_t){0};
     s_idle_best = s_idle_top = NULL;
     s_arena = s_pause_btn = s_watermark = NULL;
@@ -1020,7 +1089,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_portal[0] = s_portal[1] = s_paddle[0] = s_paddle[1] = NULL;
     memset(s_ball, 0, sizeof s_ball);
     memset(s_dot, 0, sizeof s_dot);
-    s_pick = s_pick_title = s_pick_build = s_pause = s_pause_more = NULL;
+    s_pick = s_pick_title = s_pick_build = s_pause = s_pause_more = s_pause_hint = NULL;
     memset(s_row_name, 0, sizeof s_row_name);
     memset(s_row_bon, 0, sizeof s_row_bon);
     memset(s_row_onu, 0, sizeof s_row_onu);
