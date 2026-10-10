@@ -2,32 +2,20 @@
  * @file main.c
  * @brief QUIQUE — ping-pong solo contra a parede, controlado inclinando o KIT.
  *
- * A raquete segue o dedo (arraste relativo, padrão) ou a inclinação lateral
- * (giroscópio, opcional no AJUSTE). A cada 10 rebatidas o
+ * A raquete segue a inclinação lateral do KIT. A cada 10 rebatidas o
  * jogo pausa e oferece 3 cartas abertas, cada uma com um bônus E um ônus; os
  * efeitos acumulam. Três vidas; acabou, o placar vai (ou não) pro top-5.
  *
  * Decisões que não são óbvias:
- *  - Toque: o firmware manda um TOUCH_DOWN cru por leitura do sensor (~30 ms)
- *    enquanto o dedo está na tela e NADA ao soltar; a soltura é detectada
- *    pela falta de leitura (TOUCH_LOST_FRAMES). O arraste é RELATIVO: o dedo
- *    corre em qualquer ponto da mesa, sem cobrir a raquete nem a bola.
- *  - Não há leitura crua do acelerômetro na API das Tools: a inclinação vem
- *    do giroscópio integrado (`imu->gyro_poll`, centigraus), zerado ao
- *    começar. O giroscópio deriva um pouco com o tempo, então o "centro" vaza
- *    devagar em direção ao ângulo atual (quique_game.c, LEAK_DIV).
- *  - Inclinação lateral = yaw + roll. Inclinar pro lado (como volante) gira
- *    em torno da linha de visão; com o KIT a θ da vertical, isso cai em
- *    yaw·cos θ (eixo normal à tela) + roll·sin θ (eixo da altura da tela),
- *    os dois com o mesmo sinal. A soma acerta em qualquer pegada — em pé,
- *    deitado ou no meio — com ganho entre 1× e 1,41×. Só o roll (v1.0) não
- *    mexia a raquete com o KIT em pé.
- *  - O giroscópio é lido a cada quadro ENQUANTO a partida existe, inclusive
- *    na pausa e na escolha de carta: ele só integra quando é lido, e parar de
- *    ler perderia a rotação feita no meio tempo (o centro ficaria torto).
- *  - Ângulo -> POSIÇÃO da raquete (não velocidade): é o que dá precisão.
- *  - O sentido do eixo no aparelho não foi validado no hardware: o AJUSTE
- *    tem DIREÇÃO NORMAL/INVERTIDA pra corrigir sem recompilar.
+ *  - Inclinação ABSOLUTA pelo acelerômetro (`imu->accel_tilt`, runtime
+ *    >= 0.15.0): o ângulo da borda da tela contra a gravidade. Nível = centro
+ *    em qualquer pegada (em pé na mão ou deitado), sem calibrar e sem deriva.
+ *    As versões com giroscópio (relativo, precisava zerar parado e derivava)
+ *    e com toque ficaram no histórico do git.
+ *  - Ângulo -> POSIÇÃO da raquete (não velocidade): é o que dá precisão. A
+ *    raquete corre pro lado que desce, como uma bolinha.
+ *  - O acelerômetro também mede o tranco da mão: a leitura passa por uma
+ *    média móvel curta (ACC_SMOOTH, ~50 ms) antes de virar posição.
  *  - Depois de escolher uma carta a bola volta parada na raquete: o toque na
  *    tela tira o KIT do lugar, ninguém perde vida no susto.
  *  - Inteiro puro (o .so não resolve float). Lógica em quique_game.c.
@@ -50,14 +38,11 @@
 #define H           KIT_UI_SCREEN_H           /* 448 */
 
 #define FRAME_MS        16
-#define CALIB_MS        900    /* "SEGURE O KIT RETO" antes de zerar o giroscópio */
+#define ACC_SMOOTH      3      /* média móvel do acelerômetro: 1/3 por quadro (~50 ms) */
 #define PICK_ARM_MS     700    /* cartas ignoram toque logo que abrem */
 #define RESUME_MS       800
 #define TOAST_MS        900
 #define TOAST_ABOVE     72     /* aviso: px acima da raquete */
-#define TOUCH_JUMP_PX   90     /* salto entre 2 leituras acima disto = dedo novo */
-#define STRIP_GRAB      16     /* o toque que começa até aqui acima da faixa também pega */
-#define TOUCH_LOST_FRAMES 6    /* ~100 ms sem leitura = dedo levantou */
 #define CARD_GAP        10
 #define CARD_TOP        78     /* título + montagem em cima das cartas */
 #define PAUSE_BTN       40     /* visual; com a área estendida passa de 56 */
@@ -72,22 +57,18 @@
 #define WM_HALF_H       60     /* meia altura da linha do display_120 */
 
 #define K_SENS  "qq_sens"
-#define K_CTL   "qq_ctl"
-#define K_DIR   "qq_dir"
 #define K_HS    "qq_hs"        /* qq_hs0..qq_hs4 */
 
 static const char *const SENS_LABELS[] = { "SUAVE", "NORMAL", "VIVA" };
 static const int32_t     SENS_CDEG[]   = { 3500, 2500, 1500 };   /* inclinação até a borda */
-static const int32_t     SENS_GAIN[]   = { 100, 115, 140 };      /* toque: quanto a raquete passa do dedo */
-static const char *const CTL_LABELS[]  = { "TOQUE", "INCLINA\xC3\x87\xC3\x83O" };
-static const char *const DIR_LABELS[]  = { "NORMAL", "INVERTIDA" };
 
 static const char RULES[] =
     "Ping-pong sozinho contra a parede. Segure o KIT na m\xC3\xA3o, com a tela "
     "pra voc\xC3\xAA.\n\n"
-    "1. Toque em COME\xC3\x87" "AR.\n\n"
-    "2. Deslize o dedo na faixa embaixo da mesa: a raquete fica em cima "
-    "dele. Se o dedo subir pra mesa sem soltar, ela continua seguindo.\n\n"
+    "1. Toque em COME\xC3\x87" "AR. N\xC3\xA3o precisa calibrar: o KIT "
+    "nivelado \xC3\xA9 a raquete no meio.\n\n"
+    "2. Incline pros lados: a raquete corre pro lado que desce. Quanto mais "
+    "inclina, mais longe ela vai.\n\n"
     "3. Cada rebatida vale ponto. N\xC3\xA3o deixe a bola passar: voc\xC3\xAA "
     "tem 3 vidas.\n\n"
     "4. A cada 10 rebatidas, escolha uma carta. Toda carta tem um lado bom "
@@ -95,12 +76,9 @@ static const char RULES[] =
     "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
     "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
     "6. O bot\xC3\xA3o no canto de cima pausa e mostra as suas cartas ativas. "
-    "As vidas s\xC3\xA3o os pontinhos na faixa.\n\n"
-    "No AJUSTE d\xC3\xA1 pra trocar o controle pra INCLINA\xC3\x87\xC3\x83O: "
-    "segure o KIT reto ao come\xC3\xA7" "ar e incline pros lados. Se a raquete "
-    "fugir pro lado errado, mude a DIRE\xC3\x87\xC3\x83O.";
+    "As vidas s\xC3\xA3o os pontinhos no outro canto.";
 
-typedef enum { A_OFF = 0, A_CALIB, A_PLAY, A_PICK, A_PAUSE, A_RESUME, A_OVER } arena_state_t;
+typedef enum { A_OFF = 0, A_PLAY, A_PICK, A_PAUSE, A_RESUME, A_OVER } arena_state_t;
 
 /* ------------------------------------------------------------------ estado */
 
@@ -108,24 +86,16 @@ static const kit_api_table_t *s_api;
 static lv_obj_t *s_screen;
 static kit_ui_shell_t  s_shell;
 static kit_ui_chips_t  s_sens_chips;
-static kit_ui_chips_t  s_dir_chips;
-static kit_ui_chips_t  s_ctl_chips;
 static kit_ui_action_t s_action;
 
 static int     s_sens_idx = 1;
-static int     s_ctl_idx;          /* 0 = toque, 1 = inclinação */
-static int     s_dir_idx;
 static int32_t s_hs[QQ_HS_N];
 
 static arena_state_t s_st;
 static qq_game_t     s_g;
-static int32_t s_lat, s_pitch;
-/* toque cru: o dedo que COMEÇA na faixa (ou em qualquer lugar, com Prumo)
- * controla a raquete até levantar, mesmo se subir pra mesa */
-static bool    s_touch_on, s_capture;
-static int32_t s_tx, s_ty;
-static uint32_t s_frame, s_touch_frame;
-static bool    s_gyro_on;
+/* inclinação filtrada (centigraus × 16) e se já houve a 1ª leitura */
+static int32_t s_tx16, s_ty16;
+static bool    s_acc_ok;
 static bool    s_pick_armed;
 static int     s_rank = -1;
 
@@ -138,7 +108,7 @@ static lv_obj_t *s_idle_best, *s_idle_top;
 /* arena: a mesa é a tela. Em cima, só as vidas (pontinhos) e o botão de
  * pausa; o placar é uma marca d'água atrás da bola; as cargas de
  * SACODE/FREIO são pontinhos na raquete; as cartas ficam na pausa. */
-static lv_obj_t *s_arena, *s_pause_btn, *s_lives, *s_life[QQ_MAX_LIVES], *s_watermark, *s_strip;
+static lv_obj_t *s_arena, *s_pause_btn, *s_lives, *s_life[QQ_MAX_LIVES], *s_watermark;
 static lv_obj_t *s_wall, *s_fog, *s_portal[2], *s_shield;
 static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N], *s_pip[MAX_PIPS];
 static lv_obj_t *s_toast;
@@ -219,28 +189,14 @@ static void decor(lv_obj_t *o) { lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE); }
 
 /* --- giroscópio --------------------------------------------------------- */
 
-static bool gyro_ok(void) { return s_api && s_api->imu && s_api->imu->gyro_poll; }
-
-static void gyro_begin(void)
+static void accel_read(void)
 {
-    s_lat = s_pitch = 0;
-    if (!gyro_ok()) return;
-    if (!s_gyro_on && s_api->imu->gyro_start) s_api->imu->gyro_start();
-    else if (s_api->imu->gyro_rezero) s_api->imu->gyro_rezero();
-    s_gyro_on = true;
-}
-
-static void gyro_end(void)
-{
-    if (s_gyro_on && s_api && s_api->imu && s_api->imu->gyro_stop) s_api->imu->gyro_stop();
-    s_gyro_on = false;
-}
-
-static void gyro_read(void)
-{
-    if (!s_gyro_on || !gyro_ok()) return;
-    int32_t yaw, pitch, roll;
-    if (s_api->imu->gyro_poll(&yaw, &pitch, &roll, NULL)) { s_lat = yaw + roll; s_pitch = pitch; }
+    if (!s_api || !s_api->imu || !s_api->imu->accel_tilt) return;
+    int32_t tx, ty;
+    if (!s_api->imu->accel_tilt(&tx, &ty)) return;     /* tela em repouso / I2C: mantém */
+    if (!s_acc_ok) { s_tx16 = tx * 16; s_ty16 = ty * 16; s_acc_ok = true; return; }
+    s_tx16 += (tx * 16 - s_tx16) / ACC_SMOOTH;
+    s_ty16 += (ty * 16 - s_ty16) / ACC_SMOOTH;
 }
 
 /* --- top-5 -------------------------------------------------------------- */
@@ -429,42 +385,12 @@ static void play_events(uint32_t ev)
 static void open_pick(void);
 static void game_over(void);
 
-static bool touch_mode(void) { return s_ctl_idx == 0; }
-
-static bool on_pause_btn(int32_t x, int32_t y)
-{
-    return x >= PAUSE_X - 16 && y <= PAUSE_Y + PAUSE_BTN + 16;
-}
-
-/* leitura crua do toque (uma por amostra do sensor, só enquanto encostado) */
-static void on_touch(const kit_input_event_t *ev, void *user)
-{
-    (void)user;
-    if (!ev || ev->type != KIT_INPUT_TOUCH_DOWN) return;
-    if (s_st != A_PLAY || !touch_mode()) { s_touch_on = s_capture = false; return; }
-    int32_t dx = ev->x - s_tx, dy = ev->y - s_ty;
-    bool jump = dx > TOUCH_JUMP_PX || dx < -TOUCH_JUMP_PX || dy > TOUCH_JUMP_PX || dy < -TOUCH_JUMP_PX;
-    if (!s_touch_on || jump) {
-        /* dedo novo: decide se ele é o controle */
-        s_capture = s_g.onu[QC_PRUMO] ? !on_pause_btn(ev->x, ev->y)
-                                      : ev->y >= QQ_STRIP_Y - STRIP_GRAB;
-    }
-    s_tx = ev->x;
-    s_ty = ev->y;
-    s_touch_on = true;
-    s_touch_frame = s_frame;
-}
-
 static void frame_cb(lv_timer_t *t)
 {
     (void)t;
-    s_frame++;
-    if (s_touch_on && s_frame - s_touch_frame > TOUCH_LOST_FRAMES) s_touch_on = s_capture = false;
-    gyro_read();
+    accel_read();
     if (s_st != A_PLAY) return;
-    uint32_t ev;
-    if (touch_mode()) ev = qq_step(&s_g, s_capture ? s_tx : -1, s_ty);
-    else              ev = qq_step(&s_g, s_lat, s_pitch);
+    uint32_t ev = qq_step(&s_g, s_tx16 / 16, s_ty16 / 16);
     play_events(ev);
     if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
     if (ev & QE_SHIELD) toast("ESCUDO!", 600);
@@ -480,48 +406,22 @@ static void begin_play(void)
     paint_field();
 }
 
-static void new_game(void)
-{
-    qq_start(&s_g, SENS_CDEG[s_sens_idx], s_dir_idx ? -1 : 1, rng);
-    if (touch_mode()) qq_use_touch(&s_g, SENS_GAIN[s_sens_idx]);
-    /* toque: faixa do dedo embaixo, vidas dentro dela; inclinação: mesa
-     * cheia, vidas no canto de cima (espelhando a pausa) */
-    show(s_strip, touch_mode());
-    if (touch_mode()) lv_obj_set_pos(s_lives, KIT_UI_PAD + 4, QQ_STRIP_Y + (QQ_STRIP_H - LIFE_D) / 2);
-    else              lv_obj_set_pos(s_lives, KIT_UI_PAD + 4, CORNER_Y);
-    lv_obj_set_pos(s_shield, 0, s_g.shield_y);
-}
-
-static void calib_done(void)
-{
-    if (!touch_mode()) gyro_begin();   /* bloqueia ~80 ms: KIT parado */
-    new_game();
-    reset_drawn();
-    s_touch_on = s_capture = false;
-    if (touch_mode()) toast_col("DEDO NA FAIXA", 1500, true);
-    else              toast("VAI!", 600);
-    paint_field();
-    s_st = A_PLAY;
-    if (!s_frame_timer) s_frame_timer = lv_timer_create(frame_cb, FRAME_MS, NULL);
-}
-
 static void begin_match(void)
 {
-    s_st = A_CALIB;
     s_rank = -1;
     show(s_over, false);
     show(s_pick, false);
     show(s_pause, false);
-    /* mesa já montada (bola na raquete) enquanto calibra; calib_done recomeça */
-    new_game();
+    qq_start(&s_g, SENS_CDEG[s_sens_idx], rng);
+    s_acc_ok = false;
+    lv_obj_set_pos(s_lives, KIT_UI_PAD + 4, CORNER_Y);
+    lv_obj_set_pos(s_shield, 0, s_g.shield_y);
     reset_drawn();
     paint_field();
     kit_ui_keep_awake(true);
-    lv_label_set_text(s_pause_hint, touch_mode() ? "TOQUE EM CONTINUAR QUANDO QUISER"
-                                                 : "CENTRALIZE O KIT ANTES DE VOLTAR");
-    if (touch_mode()) { calib_done(); return; }   /* toque não calibra nada */
-    toast("SEGURE O KIT RETO", 0);
-    step_after(CALIB_MS, calib_done);
+    toast_col("INCLINE O KIT", 1200, true);
+    s_st = A_PLAY;
+    if (!s_frame_timer) s_frame_timer = lv_timer_create(frame_cb, FRAME_MS, NULL);
 }
 
 /* --- escolha de carta ------------------------------------------------------ */
@@ -654,7 +554,6 @@ static void game_over(void)
     s_st = A_OVER;
     kill_timer(&s_frame_timer);
     kill_timer(&s_step_timer);
-    gyro_end();
     kit_ui_keep_awake(false);
     show(s_toast, false);
     show(s_pick, false);
@@ -694,7 +593,6 @@ static void arena_close(void)
     kill_timer(&s_step_timer);
     kill_timer(&s_toast_timer);
     s_step_fn = NULL;
-    gyro_end();
     s_st = A_OFF;
     kit_ui_keep_awake(false);
     show(s_arena, false);
@@ -744,25 +642,11 @@ static void sens_cb(int idx, void *user)
     set_i32(K_SENS, idx);
 }
 
-static void dir_cb(int idx, void *user)
-{
-    (void)user;
-    s_dir_idx = idx;
-    set_i32(K_DIR, idx);
-}
-
 /* ---------------------------------------------------------------- AJUSTE */
 
 static void section_label(lv_obj_t *p, const char *txt)
 {
     kit_ui_label(p, txt, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-}
-
-static void ctl_cb(int idx, void *user)
-{
-    (void)user;
-    s_ctl_idx = idx;
-    set_i32(K_CTL, idx);
 }
 
 static void build_ajuste(lv_obj_t *tile)
@@ -781,17 +665,13 @@ static void build_ajuste(lv_obj_t *tile)
     lv_obj_set_scroll_dir(p, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(p, LV_SCROLLBAR_MODE_AUTO);
 
-    section_label(p, "CONTROLE");
-    kit_ui_chips(&s_ctl_chips, p, CTL_LABELS, 2, s_ctl_idx, Q_ACCENT, ctl_cb, NULL);
     section_label(p, "SENSIBILIDADE");
     kit_ui_chips(&s_sens_chips, p, SENS_LABELS, 3, s_sens_idx, Q_ACCENT, sens_cb, NULL);
-    lv_obj_t *hint = kit_ui_label(p, "TOQUE: A RAQUETE ANDA 1x, 1,15x OU 1,4x O DEDO, A PARTIR DO MEIO. "
-                                     "INCLINA\xC3\x87\xC3\x83O: 35\xC2\xB0, 25\xC2\xB0 OU 15\xC2\xB0 AT\xC3\x89 A BORDA.",
+    lv_obj_t *hint = kit_ui_label(p, "QUANTO INCLINAR PRA RAQUETE CHEGAR NA BORDA: "
+                                     "35\xC2\xB0, 25\xC2\xB0 OU 15\xC2\xB0.",
                                   KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(hint, KIT_UI_CONTENT);
-    section_label(p, "DIRE\xC3\x87\xC3\x83O (S\xC3\x93 INCLINA\xC3\x87\xC3\x83O)");
-    kit_ui_chips(&s_dir_chips, p, DIR_LABELS, 2, s_dir_idx, Q_ACCENT, dir_cb, NULL);
 }
 
 /* ------------------------------------------------------------------ JOGO */
@@ -890,7 +770,7 @@ static void build_pause(void)
     lv_obj_set_pos(s_pause, 0, 0);
     lv_obj_t *t = kit_ui_label(s_pause, "PAUSA", KIT_COLOR_TEXT, &kit_mono_26, 3);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 16);
-    s_pause_hint = kit_ui_label(s_pause, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
+    s_pause_hint = kit_ui_label(s_pause, "O JOGO VOLTA COM 0,8 S DE AVISO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
     lv_obj_align(s_pause_hint, LV_ALIGN_TOP_MID, 0, 52);
 
     /* a montagem: rola se não couber */
@@ -985,17 +865,6 @@ static void build_arena(void)
     s_fog = kit_ui_rect(s_arena, W, 10, KIT_COLOR_SURFACE_ALT, 0);
     decor(s_fog);
 
-    /* toque: a faixa do dedo, por cima das bolas (a que passa da raquete
-     * some nela). Uma pegada no centro diz "o dedo vai aqui". */
-    s_strip = kit_ui_rect(s_arena, W, QQ_STRIP_H, KIT_COLOR_SURFACE, 0);
-    lv_obj_set_pos(s_strip, 0, QQ_STRIP_Y);
-    decor(s_strip);
-    for (int k = 0; k < 3; k++) {
-        lv_obj_t *grip = kit_ui_rect(s_strip, 44, 3, KIT_COLOR_LINE, 1);
-        lv_obj_align(grip, LV_ALIGN_CENTER, 0, (k - 1) * 8);
-        decor(grip);
-    }
-
     /* vidas e pausa por cima de tudo: sempre visíveis, mesmo com Neblina */
     s_lives = kit_ui_box(s_arena);
     lv_obj_set_size(s_lives, LV_SIZE_CONTENT, LIFE_D);
@@ -1057,14 +926,9 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     int32_t v = get_i32(K_SENS, 1);
     s_sens_idx = (v >= 0 && v <= 2) ? (int)v : 1;
-    v = get_i32(K_CTL, 0);
-    s_ctl_idx = (v == 1) ? 1 : 0;
-    v = get_i32(K_DIR, 0);
-    s_dir_idx = (v == 1) ? 1 : 0;
     hs_load();
     s_st = A_OFF;
     s_step_fn = NULL;
-    s_gyro_on = false;
 
     s_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_screen, lv_color_hex(KIT_COLOR_BG), 0);
@@ -1082,7 +946,6 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     paint_idle();
     if (s_api->imu && s_api->imu->register_shake_callback)
         s_api->imu->register_shake_callback(on_shake, NULL);
-    if (s_api->input) s_api->input->register_callback(on_touch, NULL);
 
     lv_obj_update_layout(s_screen);
     kit_ui_shell_open(&s_shell, 1);   /* abre no JOGO */
@@ -1095,21 +958,16 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     kill_timer(&s_frame_timer);
     kill_timer(&s_step_timer);
     kill_timer(&s_toast_timer);
-    gyro_end();
     kit_ui_keep_awake(false);
     if (s_api && s_api->imu && s_api->imu->register_shake_callback)
         s_api->imu->register_shake_callback(NULL, NULL);
-    if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
     if (s_screen) { lv_obj_delete(s_screen); s_screen = NULL; }
 
     s_shell = (kit_ui_shell_t){0};
     s_sens_chips = (kit_ui_chips_t){0};
-    s_dir_chips = (kit_ui_chips_t){0};
-    s_ctl_chips = (kit_ui_chips_t){0};
-    s_touch_on = false;
     s_action = (kit_ui_action_t){0};
     s_idle_best = s_idle_top = NULL;
-    s_arena = s_pause_btn = s_lives = s_watermark = s_strip = NULL;
+    s_arena = s_pause_btn = s_lives = s_watermark = NULL;
     memset(s_life, 0, sizeof s_life);
     memset(s_pip, 0, sizeof s_pip);
     s_wall = s_fog = s_shield = s_toast = NULL;

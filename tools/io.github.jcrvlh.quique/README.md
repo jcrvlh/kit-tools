@@ -1,22 +1,17 @@
 # Quique — `io.github.jcrvlh.quique`
 
-Ping-pong **sozinho** contra a parede. A raquete segue o **dedo** (padrão)
-ou a **inclinação do KIT** (opcional no AJUSTE). A cada
-10 rebatidas o jogo pausa e abre **3 cartas**: cada uma traz um **bônus e um
+Ping-pong **sozinho** contra a parede, controlado **inclinando o KIT**. Sem
+calibrar: com o KIT nivelado, a raquete fica no meio. A cada 10 rebatidas o
+jogo pausa e abre **3 cartas**: cada uma traz um **bônus e um
 ônus juntos**, e os efeitos **acumulam** até o fim. Com 60 pontos, sua raquete
 é uma gambiarra de escolhas suas. Três vidas; acabou, o placar entra (ou não)
 no top-5.
 
 ## A mesa
 
-A tela de jogo é só a mesa: a parede fica quase na borda de cima, e o
-**botão de pausa** (só contorno) fica no canto de cima, dentro da mesa.
-
-- **Toque:** embaixo da mesa há uma **faixa do dedo** (72 px, com uma pegada
-  no centro). A raquete fica logo acima dela, e as **vidas** (pontinhos)
-  ficam dentro dela. A bola que passa da raquete some na faixa.
-- **Inclinação:** sem faixa. A raquete fica embaixo e as vidas no canto de
-  cima, espelhando a pausa.
+A tela de jogo é só a mesa: a parede fica quase na borda de cima, o
+**botão de pausa** (só contorno) fica no canto de cima, dentro da mesa, e as
+**vidas** (pontinhos) ficam no outro canto, espelhando a pausa.
 
 O resto se mostra dentro da mesa:
 
@@ -35,29 +30,18 @@ AJUSTE  ◄──►  JOGO  ◄──►  COMO JOGA  ◄──►  CARTAS
 Abre sempre no **JOGO**.
 
 - **AJUSTE**
-  - **Controle:** toque (padrão) ou inclinação.
-  - **Sensibilidade:** suave, normal ou viva. No toque, a raquete passa do
-    dedo 1×, 1,15× ou 1,4× a partir do meio; na inclinação, 35°, 25° ou 15°
-    levam até a borda.
-  - **Direção (só inclinação):** normal ou invertida (ver *Giroscópio*).
+  - **Sensibilidade:** suave, normal ou viva: 35°, 25° ou 15° de inclinação
+    levam a raquete até a borda.
 - **JOGO:** a mesa (protagonista), o recorde, o top-5 e **COMEÇAR**.
 - **COMO JOGA:** as regras.
 - **CARTAS:** o banco inteiro, com bônus e ônus de cada carta.
 
 ## A partida
 
-1. **Começo:** no toque, a partida começa direto ("DEDO NA FAIXA"). Na
-   inclinação, "SEGURE O KIT RETO" por ~1 s; o giroscópio zera e essa
-   posição vira o centro.
-2. **Controle:**
-   - **Toque:** posição **absoluta** na faixa do dedo. A raquete fica em
-     cima do dedo, ampliada a partir do centro pela sensibilidade (1× /
-     1,15× / 1,4×), pra chegar na borda antes de o dedo chegar no canto
-     arredondado. O toque que **começa** na faixa (ou até 16 px acima dela)
-     controla até o dedo sair, mesmo se subir pra mesa. Toque que começa na
-     mesa não mexe a raquete. Sem dedo, a raquete fica onde está.
-   - **Inclinação:** o ângulo define a **posição** da raquete (não a
-     velocidade). Zona morta pequena (0,8°) pra mão não tremer a raquete.
+1. **Começo:** a partida começa direto ("INCLINE O KIT"), sem calibrar.
+2. **Controle:** o ângulo da borda da tela contra a gravidade define a
+   **posição** da raquete (não a velocidade). Ela corre pro lado que desce,
+   como uma bolinha. Zona morta pequena (0,8°) pra mão não tremer a raquete.
 3. **Saque:** a bola fica ~0,7 s na raquete e sai pra cima, com um ângulo
    sorteado de até 15°.
 4. **Rebatida:** vale 1 ponto × o multiplicador. O ângulo de volta depende de
@@ -121,15 +105,15 @@ Abre sempre no **JOGO**.
 
 ### Controle
 
-Valem nos dois controles; Sacode e Freio usam o chacoalhar, que é outro
-sensor.
+Mexem no próprio controle. Sacode e Freio usam o chacoalhar, que o KIT só
+dispara acima de ~2,2 g, então inclinar não aciona.
 
 | Carta | + | - | Máx. |
 | :--- | :--- | :--- | :---: |
 | Espelho | 50% mais pontos | controle invertido | 1 |
-| Mola | a raquete corre mais (toque: ganho ×1,25; inclinação: 40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
+| Mola | a raquete corre mais (40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
 | Pena | movimento suavizado | ~100 ms de atraso | 1 |
-| Prumo | ganha 1 escudo | o eixo do controle troca (toque: a ALTURA do dedo, em qualquer lugar da tela, vira o lado — topo = esquerda; inclinação: frente/trás) | 1 |
+| Prumo | ganha 1 escudo | o eixo do controle troca: inclinar pra frente/trás (borda de baixo subindo = direita) | 1 |
 | Sacode | 3 cargas: chacoalhar dá cortada na bola que sobe (reta, rápida, +3 na parede) | a cada ~20 s a raquete escorrega pra um lado | 2 |
 | Freio | 2 cargas: chacoalhar dá ~2 s de câmera lenta na bola que desce | bola 25% mais rápida | 2 |
 
@@ -161,45 +145,30 @@ sensor.
 | Ganância | 4 cartas por escolha | escolhas a cada 5 rebatidas | 1 |
 
 Sacode e Freio dividem o chacoalhar. O Freio socorre a bola que desce; a
-Sacode corta a que sobe. O KIT só dispara o chacoalhar acima de ~2,2 g, então
-inclinar não aciona.
+Sacode corta a que sobe.
 
 **Tijolos** (a parede vira tijolos que valem pontos) ficou pra v1.1: muda a
 física da parede e custa objetos LVGL.
 
-## Toque
+## Acelerômetro
 
-O firmware entrega à Tool uma leitura crua (`KIT_INPUT_TOUCH_DOWN`, com x/y)
-por amostra do sensor (~30 ms) enquanto o dedo está na tela, e **nada** ao
-soltar. A Tool guarda a última posição e entrega ao jogo a cada quadro. A
-soltura é detectada pela falta de leitura (~100 ms). Um salto de mais de
-90 px entre duas leituras conta como dedo novo (o CST820 lê um ponto só e
-"pula" quando entra um segundo dedo), e o dedo novo só controla se começou na
-faixa. Com Prumo, vale qualquer lugar, menos o botão de pausa.
+O controle usa `imu->accel_tilt` (runtime ≥ **0.15.0**): o ângulo de cada
+eixo da tela acima do horizontal, pela gravidade, em centigraus, já com a
+rotação do Modo canhoto aplicada. `tx > 0` = borda direita mais alta, então a
+raquete vai pra esquerda (o lado que desce).
 
-## Giroscópio
-
-A API das Tools **não expõe o acelerômetro cru**. Há só o chacoalhar, o gesto
-de inclinar da Testa (discreto) e o giroscópio integrado (`imu->gyro_*`, em
-centigraus, runtime ≥ 0.4.0).
-
-- **Inclinação lateral = yaw + roll.** Inclinar pro lado (como um volante) é
-  girar em torno da linha de visão. Com o KIT a θ da vertical, esse giro cai
-  em **yaw · cos θ** (eixo normal à tela) + **roll · sin θ** (eixo da altura
-  da tela), com o mesmo sinal (eixos do QMI8658 conforme a calibração do
-  firmware: gx = altura, gy = largura, gz = normal). A soma funciona com o KIT
-  em pé, deitado ou no meio, com ganho entre 1× e 1,41×. A v1.0 lia só o roll
-  e a raquete quase não andava com o KIT em pé.
-- **Prumo** troca pro pitch (inclinar pra frente/trás).
-- **Deriva:** o ângulo integrado deriva com o tempo. O centro "vaza" devagar
-  em direção ao ângulo atual (constante de ~30 s). Isso corrige a deriva sem
-  atrapalhar a mão que segura uma inclinação por 1 ou 2 s.
-- **Sempre lido:** o giroscópio só integra quando é lido. Por isso a Tool lê a
-  cada quadro enquanto a partida existe, inclusive na pausa e na escolha de
-  carta; senão a rotação feita no meio tempo se perderia.
-- **Sentido:** se a raquete fugir pro lado errado, use **DIREÇÃO: INVERTIDA**
-  no AJUSTE. Efeito colateral da soma: com o KIT em pé, girar o corpo (em
-  torno da vertical do mundo) também mexe a raquete um pouco.
+- **Sem calibrar e sem deriva:** o ângulo é absoluto. Nivelado = centro, em
+  qualquer pegada (em pé na mão, deitado ou no meio), porque o ângulo do eixo
+  x contra a gravidade não depende de quão em pé o KIT está.
+- **Tranco da mão:** o acelerômetro também mede a aceleração do movimento. A
+  leitura passa por uma média móvel curta (1/3 por quadro, ~50 ms) antes de
+  virar posição.
+- **Prumo:** frente/trás não tem "nível" natural (em pé na mão o eixo y fica
+  perto de -90°), então vale relativo ao ângulo de quando a carta entrou, com
+  um vazamento lento (~30 s) pra mão que muda de pegada.
+- **Histórico:** antes do 0.15.0 a API não expunha o acelerômetro. O Quique
+  passou por giroscópio (relativo: precisava zerar parado e derivava) e por
+  toque (faixa do dedo). As duas versões estão no histórico do git.
 
 ## Som
 
@@ -212,9 +181,10 @@ sem recorde.
 
 ## Persistência
 
-Sensibilidade (`qq_sens`), direção (`qq_dir`) e o top-5 (`qq_hs0`..`qq_hs4`,
-só pontos, sem sigla). A partida não sobrevive a fechar/reabrir. A tela fica
-acesa (`power->keep_awake`) da calibração ao fim.
+Sensibilidade (`qq_sens`) e o top-5 (`qq_hs0`..`qq_hs4`, só pontos, sem
+sigla). A partida não sobrevive a fechar/reabrir. A tela fica acesa
+(`power->keep_awake`) do começo ao fim, o que também mantém o acelerômetro
+ligado.
 
 ## Build
 
@@ -236,7 +206,8 @@ top-5 e um fuzz de 40 partidas com cartas aleatórias checando invariantes. O
 - **Fluidez:** é o primeiro jogo do catálogo com animação contínua. O quadro é
   de 16 ms, e a Tool só mexe no LVGL quando algo muda (posição, tamanho,
   visibilidade).
-- **Sinal do roll** (ver *Giroscópio*).
+- **Tranco da mão:** se a raquete "pular" em movimentos rápidos, a média
+  móvel precisa ser mais longa (`ACC_SMOOTH` em `src/main.c`).
 - **Leitura inclinada:** acima de ~30° a tela fica difícil de ler, e por isso
   a sensibilidade suave é o máximo.
 - **Balanceamento:** os números (percentuais, tempos, cadência) são ponto de

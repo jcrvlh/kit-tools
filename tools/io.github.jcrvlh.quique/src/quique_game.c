@@ -17,7 +17,7 @@
 #define PICK_EVERY      10
 #define PICK_EVERY_FAST 5      /* Ganância */
 #define DEADZONE_CDEG   80
-#define LEAK_DIV        2048   /* centro vaza devagar pra tirar a deriva do giroscópio */
+#define LEAK_DIV        2048   /* Prumo: a referência frente/trás vaza devagar (~30 s) */
 #define SLOW_STEPS      125    /* Freio: ~2 s */
 #define SLOW_PCT        40
 #define BLACKOUT_STEPS  60     /* Apagão: ~1 s */
@@ -223,24 +223,22 @@ static void serve(qq_game_t *g, int i, int16_t steps)
     b->on = true;
     b->stuck = steps;
     b->stuck_off = (i == 1) ? 24 * QQ_FP : 0;
-    b->x = g->paddle + b->stuck_off;
+    int32_t r = qq_ball_r(g) * QQ_FP;
+    b->x = clamp(g->paddle + b->stuck_off, r, QQ_W * QQ_FP - r);
     b->y = ball_y_on_paddle(g);
     b->vx = 0;
     b->vy = -SPEED0;
     b->smash = b->portal = b->near_sent = false;
 }
 
-void qq_start(qq_game_t *g, int32_t range_cdeg, int8_t dir, qq_rng_t rng)
+void qq_start(qq_game_t *g, int32_t range_cdeg, qq_rng_t rng)
 {
     memset(g, 0, sizeof *g);
     g->rng = rng;
     g->range_cdeg = clamp(range_cdeg, 800, 9000);
-    g->dir = dir < 0 ? -1 : 1;
     g->lives = QQ_START_LIVES;
     g->next_pick = PICK_EVERY;
-    g->paddle = g->target = g->prev_target = g->touch_x = (QQ_W / 2) * QQ_FP;
-    g->ctl = QQ_CTL_TILT;
-    g->gain_pct = 100;
+    g->paddle = g->target = g->prev_target = (QQ_W / 2) * QQ_FP;
     g->paddle_y = QQ_PADDLE_Y;
     g->shield_y = QQ_SHIELD_Y;
     g->floor_y = QQ_H;
@@ -255,13 +253,22 @@ static int32_t rnd(qq_game_t *g, int32_t lo, int32_t hi)
     return g->rng ? g->rng(lo, hi) : lo;
 }
 
-/* inclinação (giroscópio): ângulo -> posição */
-static int32_t tilt_target(qq_game_t *g, int32_t lat, int32_t pitch, int32_t span)
+/* Inclinação ABSOLUTA (acelerômetro, `imu->accel_tilt`): o ângulo vira a
+ * POSIÇÃO da raquete. `tx` > 0 = borda direita mais alta, então a raquete
+ * corre pro lado mais baixo, como uma bolinha. Nível = centro, sem calibrar.
+ * Com Prumo o eixo vira frente/trás (`ty`), e esse não tem "nível" natural
+ * (em pé na mão ele fica perto de -90°): vale relativo ao ângulo de quando a
+ * carta entrou, vazando devagar pra mão que muda de pegada. */
+static int32_t tilt_target(qq_game_t *g, int32_t tx, int32_t ty, int32_t span)
 {
-    int32_t raw = g->onu[QC_PRUMO] ? pitch : lat;
-    int32_t *z16 = g->onu[QC_PRUMO] ? &g->zero_pitch16 : &g->zero_lat16;
-    *z16 += (raw * 16 - *z16) / LEAK_DIV;
-    int32_t tilt = (raw - *z16 / 16) * g->dir;
+    int32_t tilt;
+    if (g->onu[QC_PRUMO]) {
+        if (!g->pitch_ref_ok) { g->zero_pitch16 = ty * 16; g->pitch_ref_ok = true; }
+        g->zero_pitch16 += (ty * 16 - g->zero_pitch16) / LEAK_DIV;
+        tilt = ty - g->zero_pitch16 / 16;          /* borda de baixo subindo = direita */
+    } else {
+        tilt = -tx;                                /* borda direita descendo = direita */
+    }
     if (g->onu[QC_ESPELHO]) tilt = -tilt;
 
     int32_t range = g->range_cdeg;
@@ -278,30 +285,10 @@ static int32_t tilt_target(qq_game_t *g, int32_t lat, int32_t pitch, int32_t spa
     return (QQ_W / 2) * QQ_FP + (tilt * half) / range;
 }
 
-/* toque: posição ABSOLUTA — a raquete fica em cima do dedo. O ganho amplia a
- * partir do centro pra raquete chegar na borda antes de o dedo chegar no
- * canto arredondado da tela. Sem dedo, a raquete fica onde está. */
-static int32_t touch_target(qq_game_t *g, int32_t x, int32_t y, int32_t span)
-{
-    if (x >= 0) {
-        int32_t px = x;
-        if (g->onu[QC_PRUMO])            /* Prumo: a altura do dedo vira o lado */
-            px = ((y - QQ_WALL_Y) * QQ_W) / (QQ_H - QQ_WALL_Y);
-        if (g->onu[QC_ESPELHO]) px = QQ_W - px;
-        int32_t gain = g->gain_pct;
-        for (int i = 0; i < g->bon[QC_MOLA]; i++) gain = (gain * 125) / 100;
-        g->touch_x = (QQ_W / 2) * QQ_FP + ((px - QQ_W / 2) * gain * QQ_FP) / 100;
-    }
-    int32_t lo = (span / 2) * QQ_FP, hi = (QQ_W - span / 2) * QQ_FP;
-    g->touch_x = clamp(g->touch_x, lo, hi);
-    return g->touch_x;
-}
-
 static void read_input(qq_game_t *g, int32_t a, int32_t b)
 {
     int32_t span = paddle_span(g);
-    int32_t target = (g->ctl == QQ_CTL_TOUCH) ? touch_target(g, a, b, span)
-                                              : tilt_target(g, a, b, span);
+    int32_t target = tilt_target(g, a, b, span);
 
     if (g->slip_t > 0) {
         int32_t ph = SLIP_STEPS - g->slip_t;
@@ -482,17 +469,6 @@ static void step_ball(qq_game_t *g, int i, uint32_t *ev)
     if (b->y - r > g->floor_y * QQ_FP) lose_ball(g, i, ev);
 }
 
-void qq_use_touch(qq_game_t *g, int32_t gain_pct)
-{
-    g->ctl = QQ_CTL_TOUCH;
-    g->gain_pct = clamp(gain_pct, 50, 400);
-    g->paddle_y = QQ_PADDLE_Y_TOUCH;
-    g->shield_y = QQ_SHIELD_Y_TOUCH;
-    g->floor_y = QQ_STRIP_Y;
-    for (int i = 0; i < QQ_MAX_BALLS; i++)
-        if (g->ball[i].on && g->ball[i].stuck) g->ball[i].y = ball_y_on_paddle(g);
-}
-
 uint32_t qq_step(qq_game_t *g, int32_t a, int32_t b)
 {
     if (g->state != QS_PLAY) return 0;
@@ -600,7 +576,7 @@ void qq_take(qq_game_t *g, qq_card_t c)
     switch (c) {
     case QC_FANTASMA: case QC_APAGAO: g->lives++; break;
     case QC_VIDRO:    g->lives += 2; break;
-    case QC_PRUMO:    g->shield++; break;
+    case QC_PRUMO:    g->shield++; g->pitch_ref_ok = false; break;
     case QC_SACODE:   g->smash_charges += 3; break;
     case QC_FREIO:    g->slow_charges += 2; break;
     case QC_FAXINA:   faxina(g, self); break;
