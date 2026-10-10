@@ -208,6 +208,21 @@ int     qq_preview(const qq_game_t *g, int16_t xs[], int16_t ys[]);
  */
 void    qq_fx_text(const qq_game_t *g, char *out, int cap);
 
+/* --- escolha inclinando --------------------------------------------------- */
+
+#define QQ_PICK_HYST_CDEG 150   /* passa da fronteira por 1,5° antes de trocar */
+
+/**
+ * Carta destacada pela inclinação: as `n` cartas dividem [-range, +range] em
+ * faixas iguais (nível = meio). `tx` é o accel_tilt (borda direita alta > 0,
+ * então inclinar pra direita = carta da direita). `cur` é a destacada agora
+ * (-1 = nenhuma): perto da fronteira ela fica, pra não piscar.
+ */
+int     qq_pick_index(int32_t tx, int32_t range_cdeg, int n, int cur);
+
+/** Grupo da carta pro rótulo ("RAQUETE", "BOLA"...). */
+const char *qq_card_group(qq_card_t c);
+
 /* --- top-5 -------------------------------------------------------------- */
 
 #define QQ_HS_N 5

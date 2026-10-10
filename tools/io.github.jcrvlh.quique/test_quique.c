@@ -434,6 +434,27 @@ static void test_fuzz(void)
 }
 
 
+static void test_pick_index(void)
+{
+    /* 3 cartas em ±25°: nível = meio; direita (borda direita BAIXA) = carta 2 */
+    CHECK(qq_pick_index(0, 2500, 3, -1) == 1);
+    CHECK(qq_pick_index(-2400, 2500, 3, -1) == 2);
+    CHECK(qq_pick_index(2400, 2500, 3, -1) == 0);
+    CHECK(qq_pick_index(-9000, 2500, 3, -1) == 2);   /* além do limite: segura na ponta */
+    /* fronteira entre 1 e 2 em t = +833: histerese de 1,5° */
+    CHECK(qq_pick_index(-900, 2500, 3, 1) == 1);     /* passou só 0,7°: fica */
+    CHECK(qq_pick_index(-1000, 2500, 3, 1) == 2);    /* passou 1,7°: troca */
+    CHECK(qq_pick_index(-800, 2500, 3, 2) == 2);     /* voltou só um pouco: fica na 2 */
+    CHECK(qq_pick_index(-600, 2500, 3, 2) == 1);
+    /* 4 cartas: nível cai na fronteira 1|2, e a histerese segura a atual */
+    CHECK(qq_pick_index(0, 2500, 4, 1) == 1);
+    CHECK(qq_pick_index(0, 2500, 4, 2) == 2);
+    CHECK(qq_pick_index(0, 2500, 1, 0) == 0);
+    CHECK(strcmp(qq_card_group(QC_TABUA), "RAQUETE") == 0);
+    CHECK(strcmp(qq_card_group(QC_METRONOMO), "PERCEPÇÃO") == 0);
+    CHECK(strcmp(qq_card_group(QC_GANANCIA), "META") == 0);
+}
+
 int main(void)
 {
     test_trig();
@@ -453,6 +474,7 @@ int main(void)
     test_visibility();
     test_fx_text();
     test_hs();
+    test_pick_index();
     test_fuzz();
     printf("%d ok, %d falharam\n", s_pass, s_fail);
     return s_fail ? 1 : 0;

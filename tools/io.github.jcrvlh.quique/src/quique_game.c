@@ -663,6 +663,37 @@ void qq_fx_text(const qq_game_t *g, char *out, int cap)
     }
 }
 
+/* --- escolha inclinando ------------------------------------------------- */
+
+static int pick_bin(int32_t t, int32_t range, int n)
+{
+    t = clamp(t, -range, range - 1);
+    return (int)(((t + range) * n) / (2 * range));
+}
+
+int qq_pick_index(int32_t tx, int32_t range_cdeg, int n, int cur)
+{
+    if (n <= 1) return 0;
+    int32_t range = range_cdeg < 800 ? 800 : range_cdeg;
+    int32_t t = -tx;                       /* positivo = direita */
+    int idx = pick_bin(t, range, n);
+    if (cur < 0 || cur >= n || idx == cur) return idx;
+    /* só troca se passou da fronteira com folga */
+    if (idx > cur && pick_bin(t - QQ_PICK_HYST_CDEG, range, n) <= cur) return cur;
+    if (idx < cur && pick_bin(t + QQ_PICK_HYST_CDEG, range, n) >= cur) return cur;
+    return idx;
+}
+
+const char *qq_card_group(qq_card_t c)
+{
+    if (c <= QC_ELASTICO)  return "RAQUETE";
+    if (c <= QC_TIRO)      return "BOLA";
+    if (c <= QC_FREIO)     return "CONTROLE";
+    if (c <= QC_METRONOMO) return "PERCEPÇÃO";
+    if (c <= QC_REBOTE)    return "PAREDE";
+    return "META";
+}
+
 /* --- top-5 --------------------------------------------------------------- */
 
 int qq_hs_insert(int32_t hs[QQ_HS_N], int32_t score)

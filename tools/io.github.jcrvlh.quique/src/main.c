@@ -43,8 +43,13 @@
 #define RESUME_MS       800
 #define TOAST_MS        900
 #define TOAST_ABOVE     72     /* aviso: px acima da raquete */
-#define CARD_GAP        10
-#define CARD_TOP        78     /* título + montagem em cima das cartas */
+/* escolha: carrossel — uma carta grande no meio, as vizinhas espiando */
+#define PCARD_W         272
+#define PCARD_H         276
+#define PCARD_GAP       16
+#define PCARD_X         ((W - PCARD_W) / 2)
+#define PCARD_Y         80
+#define PCARD_STEP      (PCARD_W + PCARD_GAP)
 #define PAUSE_BTN       40     /* visual; com a área estendida passa de 56 */
 #define PAUSE_X         (W - KIT_UI_PAD - PAUSE_BTN)
 #define PAUSE_Y         (QQ_WALL_Y + 10)
@@ -71,7 +76,8 @@ static const char RULES[] =
     "inclina, mais longe ela vai.\n\n"
     "3. Cada rebatida vale ponto. N\xC3\xA3o deixe a bola passar: voc\xC3\xAA "
     "tem 3 vidas.\n\n"
-    "4. A cada 10 rebatidas, escolha uma carta. Toda carta tem um lado bom "
+    "4. A cada 10 rebatidas, escolha uma carta: incline pros lados pra "
+    "passar as cartas e toque na tela pra pegar. Toda carta tem um lado bom "
     "(+) e um ruim (-), e os efeitos se acumulam at\xC3\xA9 o fim.\n\n"
     "5. Algumas cartas usam o chacoalhar: SACODE corta a bola que sobe, "
     "FREIO deixa em c\xC3\xA2mera lenta a que desce.\n\n"
@@ -114,8 +120,12 @@ static lv_obj_t *s_paddle[2], *s_ball[QQ_MAX_BALLS], *s_dot[QQ_PREVIEW_N], *s_pi
 static lv_obj_t *s_toast;
 
 /* escolha de carta */
-static lv_obj_t *s_pick, *s_pick_title, *s_pick_build, *s_card[QQ_MAX_OFFER];
-static lv_obj_t *s_card_name[QQ_MAX_OFFER], *s_card_bon[QQ_MAX_OFFER], *s_card_onu[QQ_MAX_OFFER];
+static lv_obj_t *s_pick, *s_pick_title, *s_pick_build, *s_pick_hint, *s_card[QQ_MAX_OFFER];
+static lv_obj_t *s_card_grp[QQ_MAX_OFFER], *s_card_name[QQ_MAX_OFFER];
+static lv_obj_t *s_card_bon[QQ_MAX_OFFER], *s_card_onu[QQ_MAX_OFFER], *s_pdot[QQ_MAX_OFFER];
+static int     s_sel;              /* carta destacada pela inclinação */
+static int32_t s_pick_off16;       /* deslocamento do carrossel (px × 16) */
+static int32_t s_pick_drawn = 0x7fffffff;
 
 /* pausa = a montagem: uma linha (nome, +, -) por carta ativa */
 static lv_obj_t *s_pause, *s_pause_more, *s_pause_hint;
@@ -383,12 +393,14 @@ static void play_events(uint32_t ev)
 /* --------------------------------------------------------------- partida */
 
 static void open_pick(void);
+static void pick_frame(void);
 static void game_over(void);
 
 static void frame_cb(lv_timer_t *t)
 {
     (void)t;
     accel_read();
+    if (s_st == A_PICK) { pick_frame(); return; }
     if (s_st != A_PLAY) return;
     uint32_t ev = qq_step(&s_g, s_tx16 / 16, s_ty16 / 16);
     play_events(ev);
@@ -426,7 +438,51 @@ static void begin_match(void)
 
 /* --- escolha de carta ------------------------------------------------------ */
 
-static void pick_arm(void) { s_pick_armed = true; }
+/* destaque: borda na cor da Tool + as outras apagadas; bolinhas embaixo */
+static void pick_style(void)
+{
+    for (int i = 0; i < s_g.noffer; i++) {
+        bool on = i == s_sel;
+        lv_obj_set_style_border_width(s_card[i], on ? 3 : 0, 0);
+        lv_obj_set_style_opa(s_card[i], on ? LV_OPA_COVER : LV_OPA_40, 0);
+    }
+    for (int i = 0; i < QQ_MAX_OFFER; i++) {
+        bool on = i == s_sel;
+        show(s_pdot[i], i < s_g.noffer);
+        lv_obj_set_size(s_pdot[i], on ? 20 : 8, 8);
+        lv_obj_set_style_bg_color(s_pdot[i], lv_color_hex(on ? Q_ACCENT : KIT_COLOR_LINE), 0);
+    }
+}
+
+static void pick_place(void)
+{
+    int32_t off = s_pick_off16 / 16;
+    if (off == s_pick_drawn) return;
+    s_pick_drawn = off;
+    for (int i = 0; i < s_g.noffer; i++)
+        lv_obj_set_pos(s_card[i], PCARD_X + i * PCARD_STEP + off, PCARD_Y);
+}
+
+/* a cada quadro na escolha: a inclinação escolhe, o carrossel desliza até ela */
+static void pick_frame(void)
+{
+    int sel = qq_pick_index(s_tx16 / 16, SENS_CDEG[s_sens_idx], s_g.noffer, s_sel);
+    if (sel != s_sel) {
+        s_sel = sel;
+        kit_ui_sfx(KIT_SFX_TAP);
+        pick_style();
+    }
+    int32_t target = -s_sel * PCARD_STEP * 16;
+    int32_t d = target - s_pick_off16;
+    s_pick_off16 += (d > -16 && d < 16) ? d : d / 3;   /* desacelera chegando */
+    pick_place();
+}
+
+static void pick_arm(void)
+{
+    s_pick_armed = true;
+    lv_obj_set_style_text_color(s_pick_hint, lv_color_hex(KIT_COLOR_TEXT), 0);
+}
 
 static void open_pick(void)
 {
@@ -435,37 +491,37 @@ static void open_pick(void)
     kit_ui_sfx(KIT_SFX_REVEAL);
 
     int n = s_g.noffer;
-    int top = CARD_TOP;
-    int avail = H - top - 12;
-    int ch = (avail - (n - 1) * CARD_GAP) / (n > 0 ? n : 1);
-    lv_label_set_text_fmt(s_pick_title, "ESCOLHA UMA CARTA \xC2\xB7 %d", (int)s_g.hits);
     /* a montagem aparece aqui, onde ela decide a escolha */
     qq_fx_text(&s_g, s_fx_buf, sizeof s_fx_buf);
     lv_label_set_text(s_pick_build, s_fx_buf[0] ? s_fx_buf : "SEM CARTAS AINDA");
     for (int i = 0; i < QQ_MAX_OFFER; i++) {
-        bool on = i < n;
-        show(s_card[i], on);
-        if (!on) continue;
-        const qq_card_info_t *c = &QQ_CARDS[s_g.offer[i]];
-        set_rect(s_card[i], KIT_UI_PAD, top + i * (ch + CARD_GAP), KIT_UI_CONTENT, ch);
-        lv_label_set_text(s_card_name[i], c->name);
-        lv_label_set_text_fmt(s_card_bon[i], "+ %s", c->bonus);
-        lv_label_set_text_fmt(s_card_onu[i], "- %s", c->onus);
-        int pad = n > 3 ? 6 : 12;
-        lv_obj_set_style_pad_top(s_card[i], pad, 0);
-        lv_obj_set_style_pad_bottom(s_card[i], pad, 0);
+        show(s_card[i], i < n);
+        if (i >= n) continue;
+        qq_card_t c = (qq_card_t)s_g.offer[i];
+        lv_label_set_text(s_card_grp[i], qq_card_group(c));
+        lv_label_set_text(s_card_name[i], QQ_CARDS[c].name);
+        lv_label_set_text_fmt(s_card_bon[i], "+ %s", QQ_CARDS[c].bonus);
+        lv_label_set_text_fmt(s_card_onu[i], "- %s", QQ_CARDS[c].onus);
     }
+    /* abre já na carta que a mão está apontando, sem deslizar */
+    s_sel = qq_pick_index(s_tx16 / 16, SENS_CDEG[s_sens_idx], n, -1);
+    s_pick_off16 = -s_sel * PCARD_STEP * 16;
+    s_pick_drawn = 0x7fffffff;
+    pick_style();
+    pick_place();
+    lv_obj_set_style_text_color(s_pick_hint, lv_color_hex(KIT_COLOR_LINE), 0);
     show(s_pick, true);
     step_after(PICK_ARM_MS, pick_arm);
 }
 
-static void card_cb(lv_event_t *e)
+/* toque em qualquer lugar pega a destacada */
+static void pick_tap_cb(lv_event_t *e)
 {
-    int i = (int)(intptr_t)lv_event_get_user_data(e);
-    if (s_st != A_PICK || !s_pick_armed || i >= s_g.noffer) return;
+    (void)e;
+    if (s_st != A_PICK || !s_pick_armed || s_sel < 0 || s_sel >= s_g.noffer) return;
     kit_ui_confirm();
-    const char *name = QQ_CARDS[s_g.offer[i]].name;
-    qq_take_offer(&s_g, i);
+    const char *name = QQ_CARDS[s_g.offer[s_sel]].name;
+    qq_take_offer(&s_g, s_sel);
     show(s_pick, false);
     s_st = A_PLAY;
     /* o nome fica apagado na mesa enquanto a bola espera na raquete: é o
@@ -736,31 +792,51 @@ static void build_pick(void)
 {
     s_pick = kit_ui_rect(s_arena, W, H, KIT_COLOR_BG, 0);
     lv_obj_set_pos(s_pick, 0, 0);
-    s_pick_title = kit_ui_label(s_pick, "", KIT_COLOR_TEXT, &kit_mono_16, 2);
+    lv_obj_add_flag(s_pick, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_pick, pick_tap_cb, LV_EVENT_CLICKED, NULL);
+
+    s_pick_title = kit_ui_label(s_pick, "INCLINE PRA ESCOLHER", KIT_COLOR_TEXT, &kit_mono_16, 2);
     lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 20);
     /* a montagem atual, numa linha: é a hora em que ela importa */
     s_pick_build = kit_ui_label(s_pick, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 0);
     lv_label_set_long_mode(s_pick_build, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(s_pick_build, LV_TEXT_ALIGN_CENTER, 0);
-    set_rect(s_pick_build, KIT_UI_PAD, 46, KIT_UI_CONTENT, 22);
+    set_rect(s_pick_build, KIT_UI_PAD, 44, KIT_UI_CONTENT, 22);
+    decor(s_pick_build);
+
     for (int i = 0; i < QQ_MAX_OFFER; i++) {
-        lv_obj_t *c = kit_ui_rect(s_pick, KIT_UI_CONTENT, 100, KIT_COLOR_SURFACE, 18);
-        lv_obj_set_style_pad_left(c, 16, 0);
-        lv_obj_set_style_pad_right(c, 16, 0);
+        lv_obj_t *c = kit_ui_rect(s_pick, PCARD_W, PCARD_H, KIT_COLOR_SURFACE, 22);
+        decor(c);   /* o toque é da tela inteira, não da carta */
+        lv_obj_set_style_border_color(c, lv_color_hex(Q_ACCENT), 0);
+        lv_obj_set_style_pad_all(c, 20, 0);
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_set_style_pad_row(c, 2, 0);
-        kit_ui_tap(c, card_cb, i);
-        lv_obj_set_style_bg_color(c, lv_color_hex(KIT_COLOR_SURFACE_ALT), LV_STATE_PRESSED);
-        s_card_name[i] = kit_ui_label(c, "", KIT_COLOR_TEXT, &kit_mono_20, 2);
-        s_card_bon[i] = kit_ui_label(c, "", KIT_COLOR_GREEN, &kit_sans_22, 0);
-        s_card_onu[i] = kit_ui_label(c, "", KIT_COLOR_RED, &kit_sans_22, 0);
-        lv_label_set_long_mode(s_card_bon[i], LV_LABEL_LONG_DOT);
-        lv_label_set_long_mode(s_card_onu[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(s_card_bon[i], KIT_UI_CONTENT - 32);
-        lv_obj_set_width(s_card_onu[i], KIT_UI_CONTENT - 32);
+        lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_set_style_pad_row(c, 6, 0);
+        s_card_grp[i] = kit_ui_label(c, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+        s_card_name[i] = kit_ui_label(c, "", KIT_COLOR_TEXT, &kit_mono_26, 3);
+        lv_obj_set_style_pad_bottom(s_card_name[i], 14, 0);
+        s_card_bon[i] = kit_ui_label(c, "", KIT_COLOR_GREEN, &kit_sans_28, 0);
+        s_card_onu[i] = kit_ui_label(c, "", KIT_COLOR_RED, &kit_sans_28, 0);
+        lv_label_set_long_mode(s_card_bon[i], LV_LABEL_LONG_WRAP);
+        lv_label_set_long_mode(s_card_onu[i], LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(s_card_bon[i], PCARD_W - 40);
+        lv_obj_set_width(s_card_onu[i], PCARD_W - 40);
+        lv_obj_set_style_pad_top(s_card_onu[i], 6, 0);
         s_card[i] = c;
     }
+
+    lv_obj_t *dots = kit_ui_box(s_pick);
+    lv_obj_set_size(dots, LV_SIZE_CONTENT, 8);
+    kit_ui_flex(dots, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_CENTER, 0, 6);
+    lv_obj_align(dots, LV_ALIGN_TOP_MID, 0, PCARD_Y + PCARD_H + 18);
+    decor(dots);
+    for (int i = 0; i < QQ_MAX_OFFER; i++) {
+        s_pdot[i] = kit_ui_rect(dots, 8, 8, KIT_COLOR_LINE, 4);
+        decor(s_pdot[i]);
+    }
+    s_pick_hint = kit_ui_label(s_pick, "TOQUE PRA PEGAR", KIT_COLOR_LINE, &kit_mono_16, 2);
+    lv_obj_align(s_pick_hint, LV_ALIGN_TOP_MID, 0, PCARD_Y + PCARD_H + 40);
+    decor(s_pick_hint);
     show(s_pick, false);
 }
 
@@ -974,12 +1050,14 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_portal[0] = s_portal[1] = s_paddle[0] = s_paddle[1] = NULL;
     memset(s_ball, 0, sizeof s_ball);
     memset(s_dot, 0, sizeof s_dot);
-    s_pick = s_pick_title = s_pick_build = s_pause = s_pause_more = s_pause_hint = NULL;
+    s_pick = s_pick_title = s_pick_build = s_pick_hint = s_pause = s_pause_more = s_pause_hint = NULL;
     memset(s_row_name, 0, sizeof s_row_name);
     memset(s_row_bon, 0, sizeof s_row_bon);
     memset(s_row_onu, 0, sizeof s_row_onu);
     memset(s_card, 0, sizeof s_card);
     memset(s_card_name, 0, sizeof s_card_name);
+    memset(s_card_grp, 0, sizeof s_card_grp);
+    memset(s_pdot, 0, sizeof s_pdot);
     memset(s_card_bon, 0, sizeof s_card_bon);
     memset(s_card_onu, 0, sizeof s_card_onu);
     s_over = s_over_score = s_over_caption = s_over_fx = NULL;

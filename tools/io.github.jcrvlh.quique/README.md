@@ -49,8 +49,15 @@ Abre sempre no **JOGO**.
    sempre. A bola acelera 6% a cada 10 rebatidas (teto de +60%).
 5. **Vida:** a bola passou da raquete, perde 1 de 3 e volta pro saque.
 6. **Escolha:** a cada 10 rebatidas, a mesa some e aparecem 3 cartas abertas
-   (4 com a Ganância). Os toques são ignorados nos primeiros 0,7 s, pra
-   ninguém escolher sem querer. Não dá pra pular. Depois da escolha, a bola
+   (4 com a Ganância) num **carrossel**: uma carta grande no meio, as
+   vizinhas espiando apagadas. **Inclinar escolhe**, com o mesmo gesto e a
+   mesma sensibilidade da raquete: as cartas dividem a faixa de inclinação, e
+   nivelado é a do meio. Perto da fronteira entre duas cartas a destacada só
+   troca depois de passar 1,5° (histerese, pra não piscar), e cada troca toca
+   um "tic" (`KIT_SFX_TAP`). O carrossel abre já na carta pra qual a mão
+   aponta e desliza desacelerando. **Tocar em qualquer lugar** pega a
+   destacada. Os toques são ignorados nos primeiros 0,7 s (o "TOQUE PRA
+   PEGAR" acende quando libera). Não dá pra pular. Depois da escolha, a bola
    volta parada na raquete.
 7. **Pausa:** o botão no canto de cima. A pausa mostra a **montagem**: cada
    carta ativa, com o + e o - que ainda valem (a Faxina pode ter tirado um
