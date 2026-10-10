@@ -99,7 +99,7 @@ enum { SFX_TAP, SFX_PASS, SFX_WORD, SFX_TICK,
    não denunciar quem recebeu o quê. */
 static const uint16_t SFX[][6] = {
     [SFX_TAP]      = { 440, 10 },                       /* A4, pip seco/discreto */
-    [SFX_PASS]     = { 294, 30, 349, 40 },              /* D4 -> F4: transição suave e discreta */
+    [SFX_PASS]     = { 0 },                             /* KIT_SFX_TAP: grave curto estalava */
     [SFX_WORD]     = { 440, 35, 523, 45, 587, 55 },     /* A4 -> C5 -> D5: revelação confidencial (A-C-D) */
     [SFX_TICK]     = { 494, 10 },                       /* B4, tique seco de 10 ms (34% amp, sem estalo) */
     [SFX_CAUGHT]   = { 622, 45, 440, 80 },              /* Eb5 -> A4: trítono dramático de tensão ("pegou!") */
@@ -114,6 +114,10 @@ static void sfx(int id)
     if (!s_api || !s_api->audio) return;
     if (id == SFX_TAP && s_api->audio->sfx) {
         s_api->audio->sfx(KIT_SFX_CLICK);
+        return;
+    }
+    if (id == SFX_PASS) {
+        s_api->audio->sfx(KIT_SFX_TAP);
         return;
     }
     const uint16_t *n = SFX[id];
