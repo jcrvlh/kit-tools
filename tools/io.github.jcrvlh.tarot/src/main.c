@@ -129,7 +129,7 @@ static void beep(int freq, int ms)
 static const int HIJAZ[8] = { 330, 349, 415, 440, 494, 523, 587, 659 };
 
 static void sfx_tap(void)   { if (s_api && s_api->audio) s_api->audio->sfx(KIT_SFX_TAP); }  /* toque sem estalo */
-static void sfx_back(void)  { beep(349, 22); beep(330, 36); } /* F4 -> E4 */
+static void sfx_back(void)  { if (s_api && s_api->audio) s_api->audio->sfx(KIT_SFX_BACK); }
 
 /* Embaralho: a escala Hijaz DESCE devagar, uma nota a cada poucos ticks — uma
  * ladainha hipnótica que some no grave. As últimas notas seguram mais tempo,
