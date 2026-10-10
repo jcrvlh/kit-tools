@@ -373,21 +373,37 @@ static void paint_field(void)
 
 /* --- som dos eventos ------------------------------------------------------ */
 
+/* Som. O alto-falante pequeno do KIT distorce nos graves: abaixo de ~600 Hz
+ * um bipe curto "estoura" (api_reference, runtime 0.15.0). Por isso tudo aqui
+ * fica acima disso. A raquete usa o KIT_SFX_TAP (nota pinçada: ataque de
+ * 3 ms e decaimento exponencial, volume baixo); parede, laterais e portal são
+ * bipes de <= 14 ms, que o firmware toca a ~34% como "tique de textura". */
+static void sfx_lose(void)
+{
+    kit_ui_beep(880, 40);
+    kit_ui_beep(659, 80);
+}
+
 static void play_events(uint32_t ev)
 {
     bool quiet = qq_silent(&s_g);
-    if (ev & QE_MISS) kit_ui_miss();
-    else if (ev & QE_SMASH_PT) kit_ui_beep(1319, 70);
-    else if (ev & QE_HIT) { if (!quiet) kit_ui_beep((ev & QE_CENTER) ? 988 : 659, 25); }
-    else if (ev & QE_WALL) { if (!quiet) kit_ui_beep(440, 20); }
-    else if (ev & QE_SIDE) { if (!quiet) kit_ui_beep(392, 15); }
-    else if (ev & QE_PORTAL) { if (!quiet) kit_ui_beep(1047, 25); }
+    if (ev & QE_MISS) sfx_lose();
+    else if (ev & QE_SMASH_PT) kit_ui_beep(1319, 60);
+    else if (ev & QE_HIT) {
+        if (!quiet) {
+            kit_ui_sfx(KIT_SFX_TAP);
+            if (ev & QE_CENTER) kit_ui_beep(1568, 12);   /* Tiro: brilho no centro */
+        }
+    }
+    else if (ev & QE_WALL)   { if (!quiet) kit_ui_beep(880, 14); }
+    else if (ev & QE_SIDE)   { if (!quiet) kit_ui_beep(784, 12); }
+    else if (ev & QE_PORTAL) { if (!quiet) kit_ui_beep(1047, 14); }
     if (ev & QE_SHIELD) { kit_ui_beep(880, 40); kit_ui_beep(1175, 60); }
-    if (ev & QE_NEAR) kit_ui_beep(1568, 15);
-    if (ev & QE_SLIP) kit_ui_beep(247, 40);
-    if (ev & QE_BLACKOUT) kit_ui_beep(196, 40);
+    if (ev & QE_NEAR) kit_ui_beep(1568, 12);
+    if (ev & QE_SLIP) kit_ui_beep(698, 30);
+    if (ev & QE_BLACKOUT) kit_ui_beep(622, 40);
     if (ev & QE_SMASH) kit_ui_sfx(KIT_SFX_VETO_HIT);
-    if (ev & QE_SLOWMO) kit_ui_beep(294, 120);
+    if (ev & QE_SLOWMO) { kit_ui_beep(880, 50); kit_ui_beep(659, 80); }
 }
 
 /* --------------------------------------------------------------- partida */

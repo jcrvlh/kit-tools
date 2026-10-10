@@ -179,12 +179,22 @@ raquete vai pra esquerda (o lado que desce).
 
 ## Som
 
-Bipe curto na rebatida (mais agudo no centro com Tiro), na parede, nas
-laterais e no portal (o Mudo cala todos os sons da bola), `kit_ui_miss` ao
-perder bola, duas notas
-subindo no escudo, `KIT_SFX_REVEAL` ao abrir as cartas, `KIT_SFX_VETO_HIT` na
-cortada, `KIT_SFX_ONBOARD_DONE` no recorde e `KIT_SFX_ADEDONHA_STOP` no fim
-sem recorde.
+O alto-falante pequeno do KIT distorce nos graves: abaixo de ~600 Hz um bipe
+curto "estoura" (`api_reference`, runtime 0.15.0). Todo som do Quique fica
+acima disso:
+
+- **Raquete:** `KIT_SFX_TAP`, a nota "pinçada" do firmware (D6, ataque de
+  3 ms, decaimento exponencial, volume baixo). Com Tiro, um brilho agudo
+  (1568 Hz) na rebatida de centro.
+- **Parede / lateral / portal:** bipes de 880 / 784 / 1047 Hz com ≤ 14 ms,
+  que o firmware toca a ~34% como "tique de textura". O Mudo cala esses e o
+  da raquete.
+- **Bola perdida:** duas notas descendo, 880 → 659 Hz. Fica fora do
+  `kit_ui_miss` (440 → 294 Hz), que estoura.
+- **Outros:** duas notas subindo no escudo, `KIT_SFX_REVEAL` ao abrir as
+  cartas, `KIT_SFX_TAP` a cada troca de carta no carrossel,
+  `KIT_SFX_VETO_HIT` na cortada, `KIT_SFX_ONBOARD_DONE` no recorde e
+  `KIT_SFX_ADEDONHA_STOP` no fim sem recorde.
 
 ## Persistência
 
