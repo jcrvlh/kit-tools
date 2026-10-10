@@ -128,7 +128,7 @@ static void beep(int freq, int ms)
 /* E4 F4 G#4 A4 B4 C5 D5 E5 — Frígia dominante de Mi, de baixo p/ cima. */
 static const int HIJAZ[8] = { 330, 349, 415, 440, 494, 523, 587, 659 };
 
-static void sfx_tap(void)   { beep(415, 24); }               /* G#4, curto */
+static void sfx_tap(void)   { if (s_api && s_api->audio) s_api->audio->sfx(KIT_SFX_TAP); }  /* toque sem estalo */
 static void sfx_back(void)  { beep(349, 22); beep(330, 36); } /* F4 -> E4 */
 
 /* Embaralho: a escala Hijaz DESCE devagar, uma nota a cada poucos ticks — uma
