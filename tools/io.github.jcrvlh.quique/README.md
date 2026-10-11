@@ -222,17 +222,15 @@ os limites, cada carta de vida e de limpeza, portal, escudo, chacoalhar, o
 top-5 e um fuzz de 40 partidas com cartas aleatórias checando invariantes. O
 ícone sai de `scripts/make_icon.py` (`icon.svg` é a fonte de verdade).
 
-## A validar no hardware
+## Testes no hardware
 
-- **Fluidez:** é o primeiro jogo do catálogo com animação contínua. O quadro é
-  de 16 ms, e a Tool só mexe no LVGL quando algo muda (posição, tamanho,
-  visibilidade).
-- **Tranco da mão:** se a raquete "pular" em movimentos rápidos, a média
-  móvel precisa ser mais longa (`ACC_SMOOTH` em `src/main.c`).
-- **Leitura inclinada:** acima de ~30° a tela fica difícil de ler, e por isso
-  a sensibilidade suave é o máximo.
-- **Balanceamento:** os números (percentuais, tempos, cadência) são ponto de
-  partida.
+Jogado no KIT com firmware 0.15.0: controle por inclinação, escolha de carta
+inclinando, sons e Prumo. Pontos de ajuste fino, se precisar:
+
+- **Tranco da mão:** se a raquete "pular" em movimentos rápidos, alongar a
+  média móvel (`ACC_SMOOTH` em `src/main.c`).
+- **Balanceamento:** percentuais, tempos e cadência das cartas estão em
+  `src/quique_game.c` (topo do arquivo e `QQ_CARDS`).
 
 ## Licença
 
