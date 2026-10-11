@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Gazua — linguagem "Brutalist Bauhaus" do KIT.
+    Cadeado amarelo aberto: o código foi descoberto. Fonte de verdade;
+    icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <path d="M88 112 V68 A32 32 0 0 1 152 68 V78" fill="none"
+        stroke="#E9B23C" stroke-width="16"/>
+  <rect x="60" y="112" width="120" height="92" rx="14" fill="#E9B23C"/>
+  <circle cx="120" cy="146" r="12" fill="#0A0A0B"/>
+  <rect x="114" y="150" width="12" height="30" rx="4" fill="#0A0A0B"/>
+</svg>
