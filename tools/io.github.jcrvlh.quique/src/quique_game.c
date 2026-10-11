@@ -83,6 +83,44 @@ int32_t qq_sin1024(int32_t deg)
 
 int32_t qq_cos1024(int32_t deg) { return qq_sin1024(90 - clamp(deg, 0, 90)); }
 
+/* atan(r/1024) pra r em [0, 1024], em centigraus:
+ * atan(x) ≈ π/4·x + 0,273·x·(1−x) rad (erro < 0,3°) */
+static int32_t atan_q10_cdeg(int32_t r)
+{
+    return (4500 * r) / 1024 + (1564 * r * (1024 - r)) / (1024 * 1024);
+}
+
+int32_t qq_atan2_cdeg(int32_t y, int32_t x)
+{
+    if (x == 0 && y == 0) return 0;
+    int32_t ax = iabs(x), ay = iabs(y), a;
+    if (ax >= ay) a = atan_q10_cdeg((ay * 1024) / ax);
+    else          a = 9000 - atan_q10_cdeg((ax * 1024) / ay);
+    if (x < 0) a = 18000 - a;
+    return y < 0 ? -a : a;
+}
+
+static int32_t isqrt32(int32_t v)
+{
+    if (v <= 0) return 0;
+    uint32_t n = (uint32_t)v, r = 0, bit = 1u << 30;
+    while (bit > n) bit >>= 2;
+    while (bit) {
+        if (n >= r + bit) { n -= r + bit; r = (r >> 1) + bit; }
+        else r >>= 1;
+        bit >>= 2;
+    }
+    return (int32_t)r;
+}
+
+void qq_tilt_from_mg(int32_t x, int32_t y, int32_t z, int32_t *tx, int32_t *pitch)
+{
+    /* mili-g cabem folgados: até ~8 g -> 8000² · 2 = 1,3e8 < 2^31 */
+    x = clamp(x, -8000, 8000); y = clamp(y, -8000, 8000); z = clamp(z, -8000, 8000);
+    if (tx)    *tx = qq_atan2_cdeg(x, isqrt32(y * y + z * z));
+    if (pitch) *pitch = qq_atan2_cdeg(z, -y);
+}
+
 /* ângulo assinado em graus (0 = reto pra cima) -> velocidade base */
 static void aim(qq_ball_t *b, int32_t deg, int32_t mag)
 {
@@ -256,16 +294,16 @@ static int32_t rnd(qq_game_t *g, int32_t lo, int32_t hi)
 /* Inclinação ABSOLUTA (acelerômetro, `imu->accel_tilt`): o ângulo vira a
  * POSIÇÃO da raquete. `tx` > 0 = borda direita mais alta, então a raquete
  * corre pro lado mais baixo, como uma bolinha. Nível = centro, sem calibrar.
- * Com Prumo o eixo vira frente/trás (`ty`), e esse não tem "nível" natural
- * (em pé na mão ele fica perto de -90°): vale relativo ao ângulo de quando a
- * carta entrou, vazando devagar pra mão que muda de pegada. */
-static int32_t tilt_target(qq_game_t *g, int32_t tx, int32_t ty, int32_t span)
+ * Com Prumo o eixo vira frente/trás (`pitch`, assinado — ver qq_tilt_from_mg),
+ * que não tem "nível" natural: vale relativo ao ângulo de quando a carta
+ * entrou, vazando devagar pra mão que muda de pegada. */
+static int32_t tilt_target(qq_game_t *g, int32_t tx, int32_t pitch, int32_t span)
 {
     int32_t tilt;
     if (g->onu[QC_PRUMO]) {
-        if (!g->pitch_ref_ok) { g->zero_pitch16 = ty * 16; g->pitch_ref_ok = true; }
-        g->zero_pitch16 += (ty * 16 - g->zero_pitch16) / LEAK_DIV;
-        tilt = ty - g->zero_pitch16 / 16;          /* borda de baixo subindo = direita */
+        if (!g->pitch_ref_ok) { g->zero_pitch16 = pitch * 16; g->pitch_ref_ok = true; }
+        g->zero_pitch16 += (pitch * 16 - g->zero_pitch16) / LEAK_DIV;
+        tilt = pitch - g->zero_pitch16 / 16;       /* tombar pra trás (borda de baixo subindo) = direita */
     } else {
         tilt = -tx;                                /* borda direita descendo = direita */
     }

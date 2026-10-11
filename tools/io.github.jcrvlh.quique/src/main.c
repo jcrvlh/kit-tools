@@ -7,9 +7,13 @@
  * efeitos acumulam. Três vidas; acabou, o placar vai (ou não) pro top-5.
  *
  * Decisões que não são óbvias:
- *  - Inclinação ABSOLUTA pelo acelerômetro (`imu->accel_tilt`, runtime
+ *  - Inclinação ABSOLUTA pelo acelerômetro (`imu->accel_poll`, runtime
  *    >= 0.15.0): o ângulo da borda da tela contra a gravidade. Nível = centro
  *    em qualquer pegada (em pé na mão ou deitado), sem calibrar e sem deriva.
+ *    Lemos o vetor cru (não o `accel_tilt`) pra tirar dele também o
+ *    frente/trás ASSINADO do Prumo: o ângulo do eixo y do `accel_tilt` dobra
+ *    com o KIT em pé (pra frente e pra trás davam o mesmo valor, e a raquete
+ *    só ia pra um lado). As contas ficam em qq_tilt_from_mg.
  *    As versões com giroscópio (relativo, precisava zerar parado e derivava)
  *    e com toque ficaram no histórico do git.
  *  - Ângulo -> POSIÇÃO da raquete (não velocidade): é o que dá precisão. A
@@ -100,12 +104,11 @@ static int32_t s_hs[QQ_HS_N];
 static arena_state_t s_st;
 static qq_game_t     s_g;
 /* inclinação filtrada (centigraus × 16) e se já houve a 1ª leitura */
-static int32_t s_tx16, s_ty16;
+static int32_t s_tx16, s_pitch16;
 static bool    s_acc_ok;
 static bool    s_pick_armed;
 static int     s_rank = -1;
 
-static char s_cards_txt[3072];
 static char s_fx_buf[160];
 
 /* JOGO (parado) */
@@ -197,16 +200,17 @@ static void step_after(uint32_t ms, void (*fn)(void))
 
 static void decor(lv_obj_t *o) { lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE); }
 
-/* --- giroscópio --------------------------------------------------------- */
+/* --- acelerômetro ------------------------------------------------------- */
 
 static void accel_read(void)
 {
-    if (!s_api || !s_api->imu || !s_api->imu->accel_tilt) return;
-    int32_t tx, ty;
-    if (!s_api->imu->accel_tilt(&tx, &ty)) return;     /* tela em repouso / I2C: mantém */
-    if (!s_acc_ok) { s_tx16 = tx * 16; s_ty16 = ty * 16; s_acc_ok = true; return; }
+    if (!s_api || !s_api->imu || !s_api->imu->accel_poll) return;
+    int32_t x, y, z, tx, pitch;
+    if (!s_api->imu->accel_poll(&x, &y, &z)) return;   /* tela em repouso / I2C: mantém */
+    qq_tilt_from_mg(x, y, z, &tx, &pitch);
+    if (!s_acc_ok) { s_tx16 = tx * 16; s_pitch16 = pitch * 16; s_acc_ok = true; return; }
     s_tx16 += (tx * 16 - s_tx16) / ACC_SMOOTH;
-    s_ty16 += (ty * 16 - s_ty16) / ACC_SMOOTH;
+    s_pitch16 += (pitch * 16 - s_pitch16) / ACC_SMOOTH;
 }
 
 /* --- top-5 -------------------------------------------------------------- */
@@ -418,7 +422,7 @@ static void frame_cb(lv_timer_t *t)
     accel_read();
     if (s_st == A_PICK) { pick_frame(); return; }
     if (s_st != A_PLAY) return;
-    uint32_t ev = qq_step(&s_g, s_tx16 / 16, s_ty16 / 16);
+    uint32_t ev = qq_step(&s_g, s_tx16 / 16, s_pitch16 / 16);
     play_events(ev);
     if (ev & QE_PHOENIX) { kit_ui_confirm(); toast("F\xC3\x8ANIX!", TOAST_MS); }
     if (ev & QE_SHIELD) toast("ESCUDO!", 600);
@@ -774,22 +778,6 @@ static void build_jogo(lv_obj_t *tile)
     kit_ui_action_set(&s_action, "COME\xC3\x87" "AR");
 }
 
-/* --------------------------------------------------------------- CARTAS */
-
-static void build_cards_text(void)
-{
-    int len = 0;
-    s_cards_txt[0] = 0;
-    len += snprintf(s_cards_txt + len, sizeof s_cards_txt - (size_t)len,
-                    "Toda carta traz um b\xC3\xB4nus (+) e um \xC3\xB4nus (-). "
-                    "Os efeitos se acumulam; pegar a mesma carta de novo refor\xC3\xA7" "a.\n\n");
-    for (int c = 0; c < QC_COUNT && len < (int)sizeof s_cards_txt - 1; c++) {
-        const qq_card_info_t *k = &QQ_CARDS[c];
-        len += snprintf(s_cards_txt + len, sizeof s_cards_txt - (size_t)len,
-                        "%s\n+ %s\n- %s\n\n", k->name, k->bonus, k->onus);
-    }
-}
-
 /* ---------------------------------------------------------------- arena */
 
 static lv_obj_t *pill(lv_obj_t *parent, int w, uint32_t bg, uint32_t fg, const char *txt, lv_event_cb_t cb)
@@ -1027,13 +1015,11 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     lv_obj_set_style_bg_opa(s_screen, LV_OPA_COVER, 0);
     lv_obj_remove_flag(s_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    build_cards_text();
-    kit_ui_shell_begin(&s_shell, s_screen, "QUIQUE", Q_ACCENT, 4);
+    kit_ui_shell_begin(&s_shell, s_screen, "QUIQUE", Q_ACCENT, 3);
     kit_ui_shell_tiles(&s_shell, NULL, NULL);
     build_ajuste(s_shell.tiles[0]);
     build_jogo(s_shell.tiles[1]);
     kit_ui_help_page(s_shell.tiles[2], "COMO JOGA", RULES);
-    kit_ui_help_page(s_shell.tiles[3], "CARTAS", s_cards_txt);
     build_arena();
     paint_idle();
     if (s_api->imu && s_api->imu->register_shake_callback)

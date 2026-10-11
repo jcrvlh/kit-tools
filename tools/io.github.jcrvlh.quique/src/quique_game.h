@@ -166,11 +166,11 @@ typedef struct {
 void qq_start(qq_game_t *g, int32_t range_cdeg, qq_rng_t rng);
 
 /**
- * Um passo de simulação (~16 ms). `tx`/`ty` = inclinação absoluta da tela em
- * centigraus, como `imu->accel_tilt` devolve (tx > 0 = borda direita mais
- * alta; ty > 0 = borda de baixo mais alta). Retorna QE_* (bitmask).
+ * Um passo de simulação (~16 ms). `tx` = inclinação lateral em centigraus
+ * (borda direita mais alta > 0) e `pitch` = frente/trás assinado (ver
+ * qq_tilt_from_mg), usado só com Prumo. Retorna QE_* (bitmask).
  */
-uint32_t qq_step(qq_game_t *g, int32_t tx, int32_t ty);
+uint32_t qq_step(qq_game_t *g, int32_t tx, int32_t pitch);
 
 /** O KIT foi chacoalhado (Sacode / Freio). Retorna QE_*. */
 uint32_t qq_shake(qq_game_t *g);
@@ -233,4 +233,19 @@ int     qq_hs_insert(int32_t hs[QQ_HS_N], int32_t score);
 
 /** sin/cos de `deg` (0..90) × 1024. */
 int32_t qq_sin1024(int32_t deg);
+
+/** atan2 inteiro em centigraus (-18000..18000), erro < ~0,3°. */
+int32_t qq_atan2_cdeg(int32_t y, int32_t x);
+
+/**
+ * Inclinação a partir da aceleração crua (`imu->accel_poll`, mili-g, eixos
+ * da tela: x direita, y baixo, z pro rosto; parado aponta pra cima).
+ *  - `tx`: a mesma do `accel_tilt` — ângulo do eixo x acima do horizontal
+ *    (borda direita alta > 0);
+ *  - `pitch`: giro em torno do eixo x da tela, ASSINADO: em pé na mão = 0,
+ *    tombando pra trás (tela olhando pro teto) > 0, pra frente < 0, deitado
+ *    = 9000. O ângulo do eixo y que o `accel_tilt` dá dobra em ±90° (em pé,
+ *    pra frente e pra trás dão o mesmo valor); este não.
+ */
+void    qq_tilt_from_mg(int32_t x, int32_t y, int32_t z, int32_t *tx, int32_t *pitch);
 int32_t qq_cos1024(int32_t deg);

@@ -455,6 +455,61 @@ static void test_pick_index(void)
     CHECK(strcmp(qq_card_group(QC_GANANCIA), "META") == 0);
 }
 
+static int near(int32_t v, int32_t want, int32_t tol) { return v >= want - tol && v <= want + tol; }
+
+static void test_atan_and_tilt(void)
+{
+    CHECK(qq_atan2_cdeg(0, 1000) == 0);
+    CHECK(near(qq_atan2_cdeg(1000, 1000), 4500, 5));
+    CHECK(near(qq_atan2_cdeg(1000, 0), 9000, 5));
+    CHECK(near(qq_atan2_cdeg(-1000, 0), -9000, 5));
+    CHECK(near(qq_atan2_cdeg(500, 866), 3000, 30));
+    CHECK(near(qq_atan2_cdeg(500, -866), 15000, 30));
+    CHECK(near(qq_atan2_cdeg(-500, -866), -15000, 30));
+    for (int d = -85; d <= 85; d += 5) {            /* contra a tabela de seno */
+        int32_t s5 = qq_sin1024(d < 0 ? -d : d), c5 = qq_cos1024(d < 0 ? -d : d);
+        int32_t a = qq_atan2_cdeg(d < 0 ? -s5 : s5, c5);
+        CHECK(near(a, d * 100, 40));
+    }
+
+    int32_t tx, pitch;
+    /* em pé na mão, tela pro rosto: (0, -1000, 0) */
+    qq_tilt_from_mg(0, -1000, 0, &tx, &pitch);
+    CHECK(near(tx, 0, 5) && near(pitch, 0, 5));
+    /* deitado de tela pra cima: (0, 0, 1000) */
+    qq_tilt_from_mg(0, 0, 1000, &tx, &pitch);
+    CHECK(near(tx, 0, 5) && near(pitch, 9000, 5));
+    /* em pé, 30° pra trás e 30° pra frente: sinais OPOSTOS (o accel_tilt dobrava) */
+    qq_tilt_from_mg(0, -866, 500, &tx, &pitch);
+    CHECK(near(pitch, 3000, 30));
+    qq_tilt_from_mg(0, -866, -500, &tx, &pitch);
+    CHECK(near(pitch, -3000, 30));
+    /* borda direita 20° acima, em pé: x = +342, y = -940 */
+    qq_tilt_from_mg(342, -940, 0, &tx, &pitch);
+    CHECK(near(tx, 2000, 30));
+    /* ...e deitado: o mesmo ângulo lateral */
+    qq_tilt_from_mg(342, 0, 940, &tx, &pitch);
+    CHECK(near(tx, 2000, 30));
+    /* tranco de mão (2 g) não estoura */
+    qq_tilt_from_mg(8000, -8000, 8000, &tx, &pitch);
+    CHECK(tx > 0 && pitch > 0);
+
+    /* Prumo de verdade: em pé, inclinar pra frente vai pra esquerda e pra
+     * trás vai pra direita (antes, os dois iam pro mesmo lado) */
+    qq_game_t g;
+    qq_start(&g, RANGE, rng);
+    qq_take(&g, QC_PRUMO);
+    qq_tilt_from_mg(0, -1000, 0, &tx, &pitch);
+    qq_step(&g, tx, pitch);
+    int32_t c = g.paddle;
+    qq_tilt_from_mg(0, -906, 423, &tx, &pitch);     /* 25° pra trás */
+    qq_step(&g, tx, pitch);
+    CHECK(g.paddle > c + 100 * QQ_FP);
+    qq_tilt_from_mg(0, -906, -423, &tx, &pitch);    /* 25° pra frente */
+    qq_step(&g, tx, pitch);
+    CHECK(g.paddle < c - 100 * QQ_FP);
+}
+
 int main(void)
 {
     test_trig();
@@ -475,6 +530,7 @@ int main(void)
     test_fx_text();
     test_hs();
     test_pick_index();
+    test_atan_and_tilt();
     test_fuzz();
     printf("%d ok, %d falharam\n", s_pass, s_fail);
     return s_fail ? 1 : 0;

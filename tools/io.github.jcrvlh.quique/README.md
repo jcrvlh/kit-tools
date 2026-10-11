@@ -24,7 +24,7 @@ O resto se mostra dentro da mesa:
 ## Páginas
 
 ```
-AJUSTE  ◄──►  JOGO  ◄──►  COMO JOGA  ◄──►  CARTAS
+AJUSTE  ◄──►  JOGO  ◄──►  COMO JOGA
 ```
 
 Abre sempre no **JOGO**.
@@ -34,7 +34,6 @@ Abre sempre no **JOGO**.
     levam a raquete até a borda.
 - **JOGO:** a mesa (protagonista), o recorde, o top-5 e **COMEÇAR**.
 - **COMO JOGA:** as regras.
-- **CARTAS:** o banco inteiro, com bônus e ônus de cada carta.
 
 ## A partida
 
@@ -120,7 +119,7 @@ dispara acima de ~2,2 g, então inclinar não aciona.
 | Espelho | 50% mais pontos | controle invertido | 1 |
 | Mola | a raquete corre mais (40% menos ângulo até a borda) | tremor amplificado (sem zona morta; cada movimento dá um tranco além do ponto) | 2 |
 | Pena | movimento suavizado | ~100 ms de atraso | 1 |
-| Prumo | ganha 1 escudo | o eixo do controle troca: inclinar pra frente/trás (borda de baixo subindo = direita) | 1 |
+| Prumo | ganha 1 escudo | o eixo do controle troca: inclinar pra frente/trás (tombar pra trás = direita, pra frente = esquerda) | 1 |
 | Sacode | 3 cargas: chacoalhar dá cortada na bola que sobe (reta, rápida, +3 na parede) | a cada ~20 s a raquete escorrega pra um lado | 2 |
 | Freio | 2 cargas: chacoalhar dá ~2 s de câmera lenta na bola que desce | bola 25% mais rápida | 2 |
 
@@ -159,20 +158,25 @@ física da parede e custa objetos LVGL.
 
 ## Acelerômetro
 
-O controle usa `imu->accel_tilt` (runtime ≥ **0.15.0**): o ângulo de cada
-eixo da tela acima do horizontal, pela gravidade, em centigraus, já com a
-rotação do Modo canhoto aplicada. `tx > 0` = borda direita mais alta, então a
-raquete vai pra esquerda (o lado que desce).
+O controle lê o vetor cru do acelerômetro (`imu->accel_poll`, runtime ≥
+**0.15.0**), em mili-g, nos eixos da tela, já com a rotação do Modo canhoto
+aplicada. Os ângulos saem de `qq_tilt_from_mg`, em inteiro (atan2 por
+aproximação, erro < 0,3°; raiz quadrada inteira):
 
-- **Sem calibrar e sem deriva:** o ângulo é absoluto. Nivelado = centro, em
-  qualquer pegada (em pé na mão, deitado ou no meio), porque o ângulo do eixo
-  x contra a gravidade não depende de quão em pé o KIT está.
+- **Lateral** = ângulo do eixo x acima do horizontal: `atan2(x, √(y²+z²))`,
+  o mesmo que o `accel_tilt` do firmware dá. Borda direita mais alta = a
+  raquete vai pra esquerda (o lado que desce). Sem calibrar e sem deriva:
+  nivelado = centro, em qualquer pegada.
+- **Frente/trás (Prumo)** = giro em torno do eixo x da tela, **assinado**:
+  `atan2(z, −y)`. Em pé = 0, tombando pra trás > 0, pra frente < 0, deitado =
+  90°. O ângulo do eixo y do `accel_tilt` não serve aqui porque dobra com o
+  KIT em pé: pra frente e pra trás davam o mesmo valor, e com Prumo a raquete
+  só ia pra um lado (bug da primeira versão com acelerômetro). Como
+  frente/trás não tem "nível" natural, vale relativo ao ângulo de quando a
+  carta entrou, com um vazamento lento (~30 s) pra mão que muda de pegada.
 - **Tranco da mão:** o acelerômetro também mede a aceleração do movimento. A
   leitura passa por uma média móvel curta (1/3 por quadro, ~50 ms) antes de
   virar posição.
-- **Prumo:** frente/trás não tem "nível" natural (em pé na mão o eixo y fica
-  perto de -90°), então vale relativo ao ângulo de quando a carta entrou, com
-  um vazamento lento (~30 s) pra mão que muda de pegada.
 - **Histórico:** antes do 0.15.0 a API não expunha o acelerômetro. O Quique
   passou por giroscópio (relativo: precisava zerar parado e derivava) e por
   toque (faixa do dedo). As duas versões estão no histórico do git.
