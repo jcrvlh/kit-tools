@@ -96,8 +96,11 @@ static kit_ui_chips_t s_place_chips;
 
 /* JOGO */
 static lv_obj_t *s_led, *s_place_lbl, *s_right_lbl;
-static lv_obj_t *s_num_lbl, *s_hero_lbl, *s_radar, *s_ring;
-static lv_obj_t *s_pack_btn, *s_pack_lbl, *s_album_lbl;
+static lv_obj_t *s_num_lbl, *s_hero_lbl, *s_radar, *s_ring, *s_found, *s_msg_lbl;
+#define BLIPS 6
+static lv_obj_t *s_blip[BLIPS];
+static int       s_pop;          /* quadros restantes do "pulo" ao achar inédita */
+static lv_obj_t *s_pack_btn, *s_pack_lbl, *s_pack_sub, *s_album_lbl;
 static bool      s_have_scan;
 static kit_err_t s_scan_err;
 
@@ -126,6 +129,7 @@ static int         s_fx_tick;
 
 static void render_over(void);
 static void refresh_game(void);
+static void game_cb(lv_event_t *e);
 
 /* --- utilidades -------------------------------------------------------- */
 
@@ -267,29 +271,40 @@ static void back_cb(lv_event_t *e) { (void)e; kit_ui_sfx(KIT_SFX_BACK); pop(); }
 
 /* --- JOGO -------------------------------------------------------------- */
 
+/* Radar: 3 anéis fixos, o pulso verde saindo do centro e as redes LONGE como
+ * pontinhos amarelos no anel de fora (acendem quando o pulso passa). */
+#define RADAR      168
+#define BLIP_R     70
+static const int8_t BLIP_XY[BLIPS][2] = {
+    { 66, -24 }, { -24, -66 }, { -66, 24 }, { 24, 66 }, { 30, -63 }, { -30, 63 }
+};
+
+static void show(lv_obj_t *o, bool on)
+{
+    if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void refresh_game(void)
 {
     if (!s_num_lbl) return;
     int sealed = s_album ? fig_sealed_count(s_album) : 0;
-    bool waiting = s_api->wifi && !s_have_scan;
+    bool wifi = s_api->wifi != NULL;
+    bool fail = !s_have_scan && s_scan_err == KIT_ERR_NO_MEM;
+    bool found = wifi && s_have_scan && sealed > 0;
+    bool radar = wifi && !fail && !found;
 
-    if (waiting) lv_obj_remove_flag(s_radar, LV_OBJ_FLAG_HIDDEN);
-    else         lv_obj_add_flag(s_radar, LV_OBJ_FLAG_HIDDEN);
-    if (waiting || !s_api->wifi) lv_obj_add_flag(s_num_lbl, LV_OBJ_FLAG_HIDDEN);
-    else                         lv_obj_remove_flag(s_num_lbl, LV_OBJ_FLAG_HIDDEN);
+    if (found && lv_obj_has_flag(s_found, LV_OBJ_FLAG_HIDDEN)) s_pop = 8;   /* achou: pula */
+    show(s_found, found);
+    show(s_radar, radar);
+    show(s_msg_lbl, !wifi || fail);
+    if (!wifi)     lv_label_set_text(s_msg_lbl, "Precisa do firmware 0.18 ou mais novo.");
+    else if (fail) lv_label_set_text(s_msg_lbl, "Sem memória pro Wi-Fi agora. Saia e abra de novo.");
 
     lv_label_set_text_fmt(s_num_lbl, "%d", sealed);
-    if (!s_api->wifi) {
-        lv_label_set_text(s_hero_lbl, "Precisa do firmware 0.18 ou mais novo");
-        lv_obj_set_style_text_font(s_hero_lbl, &kit_sans_28, 0);
-        lv_obj_set_style_text_letter_space(s_hero_lbl, 0, 0);
-    } else if (waiting) {
-        lv_label_set_text(s_hero_lbl, s_scan_err == KIT_ERR_NO_MEM ? "WI-FI SEM MEMÓRIA" : "PROCURANDO");
-    } else if (sealed) {
-        lv_label_set_text(s_hero_lbl, sealed == 1 ? "INÉDITA" : "INÉDITAS");
-    } else {
-        lv_label_set_text(s_hero_lbl, s_sess.far ? "CHEGUE PERTO" : "NADA NOVO AQUI");
-    }
+    lv_label_set_text(s_hero_lbl, sealed == 1 ? "INÉDITA" : "INÉDITAS");
+    int blips = s_have_scan ? (s_sess.far < BLIPS ? s_sess.far : BLIPS) : 0;
+    for (int i = 0; i < BLIPS; i++) show(s_blip[i], i < blips);
 
     lv_label_set_text(s_place_lbl, s_have_scan ? place_caps() : "");
     if (s_have_scan && s_sess.far) {
@@ -303,8 +318,8 @@ static void refresh_game(void)
 
     lv_obj_set_style_bg_color(s_pack_btn, lv_color_hex(sealed ? KIT_COLOR_YELLOW : KIT_COLOR_SURFACE), 0);
     lv_obj_set_style_text_color(s_pack_lbl, lv_color_hex(sealed ? KIT_COLOR_ON_YELLOW : KIT_COLOR_TEXT_MUTED), 0);
-    lv_label_set_text(s_pack_lbl, sealed ? "ABRIR PACOTE" : "PACOTE VAZIO");
-    lv_label_set_text_fmt(s_album_lbl, "ÁLBUM  %d/%d", s_album ? fig_filled(s_album) : 0, FIG_SLOTS);
+    lv_obj_set_style_text_color(s_pack_sub, lv_color_hex(sealed ? KIT_COLOR_ON_YELLOW : KIT_COLOR_TEXT_MUTED), 0);
+    lv_label_set_text_fmt(s_album_lbl, "%d/%d", s_album ? fig_filled(s_album) : 0, FIG_SLOTS);
 }
 
 static void on_scan(kit_err_t result, const kit_wifi_ap_t *aps, size_t count, void *ud)
@@ -358,9 +373,18 @@ static void fx_tick(lv_timer_t *t)
     s_fx_tick++;
     if (s_led) lv_obj_set_style_opa(s_led, (s_fx_tick / 12) % 2 ? LV_OPA_40 : LV_OPA_COVER, 0);
     if (s_ring && !lv_obj_has_flag(s_radar, LV_OBJ_FLAG_HIDDEN)) {
-        int f = s_fx_tick % 30;
-        lv_obj_set_size(s_ring, 20 + f * 4, 20 + f * 4);
-        lv_obj_set_style_opa(s_ring, (lv_opa_t)(255 - f * 8), 0);
+        int f = s_fx_tick % 32;
+        int d = 16 + f * 5;                  /* 16 -> 171 px */
+        lv_obj_set_size(s_ring, d, d);
+        lv_obj_set_style_opa(s_ring, (lv_opa_t)(255 - f * 7), 0);
+        int near = d / 2 - BLIP_R;
+        lv_opa_t bo = (near > -14 && near < 14) ? LV_OPA_COVER : LV_OPA_40;
+        for (int i = 0; i < BLIPS; i++) lv_obj_set_style_opa(s_blip[i], bo, 0);
+    }
+    if (s_pop > 0 && s_found) {
+        s_pop--;
+        lv_obj_set_style_translate_y(s_found, s_pop * 5, 0);
+        lv_obj_set_style_opa(s_found, (lv_opa_t)(255 - s_pop * 24), 0);
     }
 }
 
@@ -377,6 +401,32 @@ static void game_cb(lv_event_t *e)
     }
 }
 
+/* Botão de ação em pílula, duas linhas: rótulo + detalhe. */
+static lv_obj_t *pill2(lv_obj_t *parent, int w, const char *main_txt, int code,
+                       lv_obj_t **main_lbl, lv_obj_t **sub_lbl, const char *sub_txt)
+{
+    lv_obj_t *b = kit_ui_rect(parent, w, BTN_H, KIT_COLOR_SURFACE, BTN_H / 2);
+    kit_ui_tap(b, game_cb, code);
+    kit_ui_flex(b, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 0, 0);
+    lv_obj_t *m = kit_ui_label(b, main_txt, KIT_COLOR_TEXT, &kit_mono_26, 3);
+    lv_obj_t *d = kit_ui_label(b, sub_txt, KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
+    if (main_lbl) *main_lbl = m;
+    if (sub_lbl) *sub_lbl = d;
+    return b;
+}
+
+static lv_obj_t *ring(lv_obj_t *parent, int d, int width, uint32_t color)
+{
+    lv_obj_t *r = kit_ui_box(parent);
+    lv_obj_set_size(r, d, d);
+    lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(r, width, 0);
+    lv_obj_set_style_border_color(r, lv_color_hex(color), 0);
+    lv_obj_set_style_border_opa(r, LV_OPA_COVER, 0);
+    lv_obj_align(r, LV_ALIGN_CENTER, 0, 0);
+    return r;
+}
+
 static void build_game(lv_obj_t *tile)
 {
     lv_obj_set_style_pad_all(tile, 0, 0);
@@ -385,8 +435,9 @@ static void build_game(lv_obj_t *tile)
     lv_obj_set_style_pad_left(col, KIT_UI_PAD, 0);
     lv_obj_set_style_pad_right(col, KIT_UI_PAD, 0);
     lv_obj_set_style_pad_bottom(col, KIT_UI_BTN_MARGIN, 0);
-    kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
+    kit_ui_flex(col, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, 12, 0);
 
+    /* status: pulso verde + lugar | redes em volta / longe */
     lv_obj_t *st = kit_ui_box(col);
     lv_obj_set_size(st, KIT_UI_CONTENT, 32);
     kit_ui_flex(st, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
@@ -397,31 +448,46 @@ static void build_game(lv_obj_t *tile)
     s_place_lbl = kit_ui_label(left, "", KIT_COLOR_TEXT, &kit_mono_20, 3);
     s_right_lbl = kit_ui_label(st, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
 
+    /* centro: ocupa o que sobra; radar OU número de inéditas OU aviso */
     lv_obj_t *hero = kit_ui_box(col);
-    lv_obj_set_size(hero, KIT_UI_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(hero, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 8, 0);
-    s_num_lbl = kit_ui_label(hero, "0", KIT_COLOR_TEXT, &kit_display_120, 0);
-    s_radar = kit_ui_box(hero);
-    lv_obj_set_size(s_radar, 140, 140);
-    s_ring = kit_ui_box(s_radar);
-    lv_obj_set_style_radius(s_ring, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(s_ring, 3, 0);
-    lv_obj_set_style_border_color(s_ring, lv_color_hex(ACCENT), 0);
-    lv_obj_set_style_border_opa(s_ring, LV_OPA_COVER, 0);
-    lv_obj_set_size(s_ring, 20, 20);
-    lv_obj_align(s_ring, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_center(kit_ui_rect(s_radar, 20, 20, ACCENT, LV_RADIUS_CIRCLE));
-    s_hero_lbl = kit_ui_label(hero, "PROCURANDO", KIT_COLOR_TEXT, &kit_mono_26, 3);
-    lv_label_set_long_mode(s_hero_lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_hero_lbl, KIT_UI_CONTENT);
-    lv_obj_set_style_text_align(s_hero_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(hero, KIT_UI_CONTENT);
+    lv_obj_set_flex_grow(hero, 1);
+    kit_ui_flex(hero, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(hero, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
+    s_radar = kit_ui_box(hero);
+    lv_obj_set_size(s_radar, RADAR, RADAR);
+    ring(s_radar, RADAR / 3, 2, KIT_COLOR_LINE);
+    ring(s_radar, RADAR * 2 / 3, 2, KIT_COLOR_LINE);
+    ring(s_radar, RADAR, 2, KIT_COLOR_LINE);
+    s_ring = ring(s_radar, 16, 3, ACCENT);
+    lv_obj_center(kit_ui_rect(s_radar, 16, 16, ACCENT, LV_RADIUS_CIRCLE));
+    for (int i = 0; i < BLIPS; i++) {
+        s_blip[i] = kit_ui_rect(s_radar, 14, 14, KIT_COLOR_YELLOW, LV_RADIUS_CIRCLE);
+        lv_obj_align(s_blip[i], LV_ALIGN_CENTER, BLIP_XY[i][0], BLIP_XY[i][1]);
+        lv_obj_add_flag(s_blip[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    s_found = kit_ui_box(hero);
+    lv_obj_set_size(s_found, KIT_UI_CONTENT, LV_SIZE_CONTENT);
+    kit_ui_flex(s_found, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER, 10, 0);
+    lv_obj_add_flag(s_found, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_num_lbl = kit_ui_label(s_found, "0", KIT_COLOR_TEXT, &kit_display_120, 0);
+    s_hero_lbl = kit_ui_label(s_found, "INÉDITAS", KIT_COLOR_YELLOW, &kit_mono_26, 3);
+    lv_obj_add_flag(s_found, LV_OBJ_FLAG_HIDDEN);
+
+    s_msg_lbl = kit_ui_text(hero, "", KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
+    lv_obj_add_flag(s_msg_lbl, LV_OBJ_FLAG_HIDDEN);
+
+    /* ação: lado a lado, 80 px */
     lv_obj_t *btns = kit_ui_box(col);
-    lv_obj_set_size(btns, KIT_UI_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(btns, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, 12, 0);
-    s_pack_btn = button(btns, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT_MUTED, true,
-                        "PACOTE VAZIO", game_cb, 0, &s_pack_lbl);
-    button(btns, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, true, "ÁLBUM", game_cb, 1, &s_album_lbl);
+    lv_obj_set_size(btns, KIT_UI_CONTENT, BTN_H);
+    kit_ui_flex(btns, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 0);
+    lv_obj_t *dummy;
+    s_pack_btn = pill2(btns, CELL_W, "ABRIR", 0, &s_pack_lbl, &dummy, "PACOTE");
+    lv_obj_set_style_text_color(dummy, lv_color_hex(KIT_COLOR_TEXT_MUTED), 0);
+    s_pack_sub = dummy;
+    pill2(btns, CELL_W, "ÁLBUM", 1, NULL, &s_album_lbl, "0/28");
 }
 
 /* --- AJUSTE ------------------------------------------------------------ */
@@ -1051,7 +1117,10 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     if (s_screen) lv_obj_delete(s_screen);
     s_screen = s_over = s_over_body = s_over_right = s_toast = NULL;
     s_led = s_place_lbl = s_right_lbl = s_num_lbl = s_hero_lbl = s_radar = s_ring = NULL;
-    s_pack_btn = s_pack_lbl = s_album_lbl = s_zero_lbl = NULL;
+    s_pack_btn = s_pack_lbl = s_pack_sub = s_album_lbl = s_zero_lbl = NULL;
+    s_found = s_msg_lbl = NULL;
+    for (int i = 0; i < BLIPS; i++) s_blip[i] = NULL;
+    s_pop = 0;
     s_env = s_env_flap = s_env_tear = s_env_grip = s_env_hint = s_rise_obj = NULL;
     memset(&s_shell, 0, sizeof(s_shell));
     memset(&s_name_chips, 0, sizeof(s_name_chips));
