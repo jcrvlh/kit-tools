@@ -118,6 +118,7 @@ static int  s_todas_limit;
 static lv_obj_t *s_env, *s_env_flap, *s_env_tear, *s_env_grip, *s_env_hint, *s_rise_obj;
 static bool s_drag, s_env_open;
 static int  s_drag_x0, s_drag_dx;
+static int  s_tear_step;          /* nota da escala já tocada neste arraste */
 static int  s_rev_idx;            /* figurinha recém-revelada, -1 = mostra envelope */
 static int  s_pack_done;          /* reveladas desde que o pacote abriu */
 static int  s_anim, s_anim_step;
@@ -562,6 +563,7 @@ static lv_obj_t *over_begin(const char *title, const char *right)
     lv_obj_set_pos(b, 0, KIT_UI_TITLEBAR);
     lv_obj_set_style_pad_left(b, KIT_UI_PAD, 0);
     lv_obj_set_style_pad_right(b, KIT_UI_PAD, 0);
+    lv_obj_set_style_pad_top(b, 16, 0);
     lv_obj_set_style_pad_bottom(b, 24, 0);
     kit_ui_flex(b, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, 12, 0);
     lv_obj_add_flag(b, LV_OBJ_FLAG_SCROLLABLE);
@@ -630,7 +632,6 @@ static void env_open(void)
     lv_obj_add_flag(s_env_grip, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_env_tear, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_env_hint, "");
-    kit_ui_sfx(KIT_SFX_TAP);
     anim_start(ANIM_OPEN);
 }
 
@@ -641,6 +642,7 @@ static void env_press_cb(lv_event_t *e)
     s_drag = true;
     s_drag_x0 = -1;
     s_drag_dx = 0;
+    s_tear_step = 0;
 }
 
 static void env_release_cb(lv_event_t *e)
@@ -651,10 +653,26 @@ static void env_release_cb(lv_event_t *e)
     bool moved = s_drag_dx > 12;
     s_drag = false;
     s_drag_dx = 0;
+    s_tear_step = 0;
     env_paint();
     if (!moved) {
         lv_label_set_text(s_env_hint, "ARRASTE NA LINHA");
         lv_obj_set_style_text_color(s_env_hint, lv_color_hex(KIT_COLOR_YELLOW), 0);
+    }
+}
+
+/* Cada trecho do rasgo toca a próxima nota de uma escala maior subindo (como
+ * a revelação da Times). Começa em Mi5: abaixo de ~600 Hz o alto-falante
+ * distorce. Voltar o dedo não repete nota. */
+#define TEAR_NOTES 8
+static void tear_notes(int dx)
+{
+    static const uint16_t SCALE[TEAR_NOTES] = { 659, 698, 784, 880, 988, 1047, 1175, 1319 };
+    int step = dx * TEAR_NOTES / ENV_TRAVEL;
+    if (step > TEAR_NOTES) step = TEAR_NOTES;
+    while (s_tear_step < step) {
+        kit_ui_beep(SCALE[s_tear_step], 60);
+        s_tear_step++;
     }
 }
 
@@ -669,6 +687,7 @@ static void on_input(const kit_input_event_t *ev, void *ud)
     if (dx - s_drag_dx > 120) return;   /* salto de uma amostra: lixo de coordenada */
     s_drag_dx = dx;
     env_paint();
+    tear_notes(dx);
     if (dx >= ENV_TRAVEL * 9 / 10) env_open();
 }
 
@@ -693,7 +712,10 @@ static void build_pack(void)
     char pos[16];
     if (s_rev_idx < 0) snprintf(pos, sizeof(pos), "%d/%d", s_pack_done + 1, s_pack_done + sealed);
     else               snprintf(pos, sizeof(pos), "%d/%d", s_pack_done + 1, s_pack_done + 1 + sealed);
-    lv_obj_t *b = over_begin("PACOTE", pos);
+    char title[16];
+    if (s_rev_idx < 0) snprintf(title, sizeof(title), "PACOTE");
+    else               snprintf(title, sizeof(title), "#%03d", s_rev_idx + 1);
+    lv_obj_t *b = over_begin(title, pos);
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     if (s_rev_idx < 0) {
@@ -746,12 +768,10 @@ static void build_pack(void)
     lv_obj_t *st = art_sticker(s_rise_obj, s_album, s_rev_idx, ART_BIG);
     art_motion_start(st, ART_BIG, fig_is_rare(n));
 
-    char line[48], nm[KIT_WIFI_SSID_MAX + 12];
-    snprintf(line, sizeof(line), fig_is_rare(n) ? "#%03d  BRILHANTE" : "#%03d", s_rev_idx + 1);
-    kit_ui_label(s_rise_obj, line, fig_is_rare(n) ? KIT_COLOR_YELLOW : KIT_COLOR_TEXT_MUTED, &kit_mono_26, 3);
+    char nm[KIT_WIFI_SSID_MAX + 12];
     net_name(s_rev_idx, nm, sizeof(nm));
-    lv_obj_t *nl = kit_ui_text(s_rise_obj, nm, KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
-    (void)nl;
+    kit_ui_text(s_rise_obj, nm, KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
+    if (fig_is_rare(n)) kit_ui_label(s_rise_obj, "BRILHANTE", KIT_COLOR_YELLOW, &kit_mono_26, 3);
 
     uint8_t sl[FIG_SLOTS];
     int k = fig_slots_of(s_album, s_rev_idx, sl, FIG_SLOTS);
@@ -1127,6 +1147,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     memset(&s_place_chips, 0, sizeof(s_place_chips));
     s_depth = 0;
     s_drag = s_env_open = false;
+    s_tear_step = 0;
     s_zero_armed_ms = 0;
 
     free(s_album);
