@@ -56,7 +56,7 @@
         "permissions": {
           "type": "array",
           "items": {
-            "enum": ["display", "input", "storage", "random", "time", "audio", "power", "imu", "network"]
+            "enum": ["display", "input", "storage", "random", "time", "audio", "power", "imu", "network", "wifi_scan"]
           }
         },
         "package": {
