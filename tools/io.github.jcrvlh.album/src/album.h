@@ -32,17 +32,21 @@
 #define FIG_NO_HOUR     255
 #define FIG_NO_PLACE    0       /* place = 0: Passeio */
 
-/* --- vagas: 13 canais + 4 segurança + 5 horários + 6 especiais = 28 ----- */
+/* --- vagas: 13 canais + 4 segurança + 5 horários + 6 especiais + 26 letras
+ * = 54. As 28 primeiras são da versão 1 do arquivo; a ordem nunca muda (o
+ * arquivo guarda o índice). ------------------------------------------------ */
 enum {
     FIG_S_CH1 = 0,                  /* ..FIG_S_CH1+12 = canal 13 */
     FIG_S_ABERTA = 13, FIG_S_WEP, FIG_S_WPA2, FIG_S_WPA3,
     FIG_S_MAD = 17, FIG_S_MAN, FIG_S_ALM, FIG_S_TAR, FIG_S_NOI,
     FIG_S_OCULTA = 22, FIG_S_NOMADE, FIG_S_BANDO, FIG_S_ENCOSTADO, FIG_S_FIEL, FIG_S_MULTIDAO,
-    FIG_SLOTS = 28
+    FIG_S_LETRA_A = 28,             /* ..FIG_S_LETRA_A+25 = letra Z (1ª letra do nome) */
+    FIG_SLOTS = 54
 };
+#define FIG_SLOTS_V1 28
 
-/* Páginas do álbum: [primeira vaga, quantidade]. */
-#define FIG_PAGES 4
+/* Páginas do álbum, na ordem de exibição: [primeira vaga, quantidade]. */
+#define FIG_PAGES 5
 extern const uint8_t FIG_PAGE_FIRST[FIG_PAGES];
 extern const uint8_t FIG_PAGE_COUNT[FIG_PAGES];
 
@@ -160,5 +164,11 @@ void fig_sanitize_ssid(char *dst, const char *src);
 
 /* Gravação A/B (dois arquivos, vale o de maior gen com CRC ok). */
 typedef FILE *(*fig_open_fn)(const char *name, const char *mode);
-bool fig_album_load(fig_album_t *a, fig_open_fn open_fn);
+/* `upgraded` (pode ser NULL) = true se o arquivo era da versão 1 e ganhou a
+ * página Letras agora (as redes já reveladas preenchem as letras). */
+bool fig_album_load(fig_album_t *a, fig_open_fn open_fn, bool *upgraded);
+
+/* Vaga de letra (A-Z) pela 1ª letra do nome, acento contando pela letra base;
+ * -1 se não começa com letra. */
+int  fig_letter_slot(const char *ssid);
 bool fig_album_save(fig_album_t *a, fig_open_fn open_fn);

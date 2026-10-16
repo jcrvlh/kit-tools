@@ -23,13 +23,14 @@ Funciona com o Wi-Fi do KIT desligado.
 5. Abrindo sempre no mesmo lugar, em 3 dias diferentes, o KIT pergunta que lugar
    é (Casa, Trabalho, Escola...), já sugerindo pelo horário.
 
-### As páginas do álbum (28 vagas)
+### As páginas do álbum (54 vagas)
 
 | Página | Vagas |
 | --- | --- |
 | **Canais** | uma por canal, de 1 a 13 (12 e 13 são raros) |
 | **Segurança** | aberta, WEP, WPA2, WPA3 |
 | **Horários** | madrugada, manhã, almoço, tarde, noite (hora da captura) |
+| **Letras** | de A a Z, pela primeira letra do nome da rede (acento conta pela letra base: Á é A, Ç é C) |
 | **Especiais** | oculta, nômade (hotspot de celular), bando (3 nós da mesma mesh), encostado (sinal de -35 dBm ou mais), fiel (vista em 7 dias diferentes), multidão (20+ redes num scan só) |
 
 Fora as vagas, toda rede capturada entra em **Todas as redes**, sem limite de
@@ -63,8 +64,10 @@ página (até 384 redes no álbum).
   inédita/repetida, vagas, lugares pela impressão digital das redes (≥ 50% das
   mesmas redes = mesmo lugar), gravação.
 - **Gravação**: `album_a.bin` / `album_b.bin` no armazenamento interno da Tool
-  (~21 KB), alternando a cada gravação; vale o mais novo com CRC íntegro.
-- **Formas**: círculo e quadrado são `lv_obj`; o triângulo é máscara A8 em 4
+  (~21 KB), alternando a cada gravação; vale o mais novo com CRC íntegro. A
+  versão 1 do arquivo (sem Letras) é migrada ao abrir: as redes já reveladas
+  preenchem as letras.
+- **Formas**: círculo e quadrado são `lv_obj`; o triângulo é máscara A8 em 6
   tamanhos fixos (`scripts/make_shapes.py` gera `src/shapes.h`).
 
 ## Compilar

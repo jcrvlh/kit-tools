@@ -48,11 +48,11 @@ static const char RULES[] __attribute__((aligned(4))) =
     "do álbum: ela vem num envelope. Arraste o dedo na linha pra abrir.\n\n"
     "3. Só pega rede perto. Se aparecer \"longe\", ande uns passos com o KIT na mão.\n\n"
     "4. As páginas pedem redes especiais: cada canal, cada tipo de senha, cada "
-    "hora do dia. Brilhante é rara.\n\n"
+    "hora do dia, cada letra do alfabeto. Brilhante é rara.\n\n"
     "5. Abrindo sempre no mesmo lugar, o KIT pergunta que lugar é.\n\n"
     "O KIT só olha as redes, nunca conecta em nenhuma.";
 
-static const char *const SLOT_CAP[FIG_SLOTS] = {
+static const char *const SLOT_CAP[FIG_SLOTS_V1] = {
     "CANAL 1", "CANAL 2", "CANAL 3", "CANAL 4", "CANAL 5", "CANAL 6", "CANAL 7",
     "CANAL 8", "CANAL 9", "CANAL 10", "CANAL 11", "CANAL 12", "CANAL 13",
     "ABERTA", "WEP", "WPA2", "WPA3",
@@ -60,9 +60,9 @@ static const char *const SLOT_CAP[FIG_SLOTS] = {
     "OCULTA", "NÔMADE", "BANDO", "ENCOSTADO", "FIEL", "MULTIDÃO",
 };
 static const char *const PAGE_TITLE[FIG_PAGES + 1] = {
-    "CANAIS", "SEGURANÇA", "HORÁRIOS", "ESPECIAIS", "TODAS"
+    "CANAIS", "SEGURANÇA", "HORÁRIOS", "LETRAS", "ESPECIAIS", "TODAS"
 };
-static const char *const PAGE_ROW[FIG_PAGES] = { "Canais", "Segurança", "Horários", "Especiais" };
+static const char *const PAGE_ROW[FIG_PAGES] = { "Canais", "Segurança", "Horários", "Letras", "Especiais" };
 static const char *const PLACE_ROW[FIG_PLACE_NAMES + 1] = {
     "Lugar sem nome", "Casa", "Trabalho", "Escola", "Academia", "Família", "Outro"
 };
@@ -130,6 +130,27 @@ static int         s_fx_tick;
 
 static void render_over(void);
 static void refresh_game(void);
+
+/* Legenda da vaga: as 28 da v1 vêm da tabela; as letras são "LETRA X". */
+static const char *slot_cap(int slot, char *buf, size_t len)
+{
+    if (slot < FIG_SLOTS_V1) return SLOT_CAP[slot];
+    snprintf(buf, len, "LETRA %c", 'A' + (slot - FIG_S_LETRA_A));
+    return buf;
+}
+
+/* "CANAL 6, NOITE, LETRA A" — as vagas que a rede `idx` ocupa. */
+static int slots_text(int idx, char *out, size_t len)
+{
+    uint8_t sl[FIG_SLOTS];
+    char cb[12];
+    int k = fig_slots_of(s_album, idx, sl, FIG_SLOTS);
+    int o = 0;
+    out[0] = '\0';
+    for (int i = 0; i < k && o < (int)len - 16; i++)
+        o += snprintf(out + o, len - o, i ? ", %s" : "%s", slot_cap(sl[i], cb, sizeof(cb)));
+    return k;
+}
 static void game_cb(lv_event_t *e);
 
 /* --- utilidades -------------------------------------------------------- */
@@ -773,12 +794,9 @@ static void build_pack(void)
     kit_ui_text(s_rise_obj, nm, KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
     if (fig_is_rare(n)) kit_ui_label(s_rise_obj, "BRILHANTE", KIT_COLOR_YELLOW, &kit_mono_26, 3);
 
-    uint8_t sl[FIG_SLOTS];
-    int k = fig_slots_of(s_album, s_rev_idx, sl, FIG_SLOTS);
-    char got[160];
-    int o = snprintf(got, sizeof(got), "COLOU EM ");
-    for (int i = 0; i < k && o < (int)sizeof(got) - 16; i++)
-        o += snprintf(got + o, sizeof(got) - o, i ? ", %s" : "%s", SLOT_CAP[sl[i]]);
+    char list[160], got[176];
+    slots_text(s_rev_idx, list, sizeof(list));
+    snprintf(got, sizeof(got), "COLOU EM %s", list);
     lv_obj_t *gl = kit_ui_text(s_rise_obj, got, ACCENT, &kit_mono_20, KIT_UI_CONTENT);
     lv_obj_set_style_text_letter_space(gl, 2, 0);
     kit_ui_label(s_rise_obj, fig_sealed_count(s_album) ? "TOQUE PRA PRÓXIMA" : "TOQUE PRA FECHAR",
@@ -919,9 +937,11 @@ static void build_page(int page)
     for (int i = 0; i < FIG_PAGE_COUNT[page]; i++) {
         int slot = FIG_PAGE_FIRST[page] + i;
         int idx = fig_slot_net(s_album, slot);
-        if (page == 0) snprintf(mark, sizeof(mark), "%d", i + 1);
-        else           snprintf(mark, sizeof(mark), "?");
-        cell(grid, idx, SLOT_CAP[slot], mark);
+        char cb[12];
+        if (page == 0)                          snprintf(mark, sizeof(mark), "%d", i + 1);
+        else if (slot >= FIG_S_LETRA_A)         snprintf(mark, sizeof(mark), "%c", 'A' + i);
+        else                                    snprintf(mark, sizeof(mark), "?");
+        cell(grid, idx, slot_cap(slot, cb, sizeof(cb)), mark);
     }
 }
 
@@ -972,13 +992,8 @@ static void build_ficha(int idx)
     else if (fig_is_hotspot(n)) spec(b, "TIPO", "CELULAR");
     else if (fig_mesh_count(s_album, n->ssid) >= 2) spec(b, "TIPO", "MESH");
 
-    uint8_t sl[FIG_SLOTS];
-    int k = fig_slots_of(s_album, idx, sl, FIG_SLOTS);
     char got[160];
-    int o = 0;
-    got[0] = '\0';
-    for (int i = 0; i < k && o < (int)sizeof(got) - 16; i++)
-        o += snprintf(got + o, sizeof(got) - o, i ? ", %s" : "%s", SLOT_CAP[sl[i]]);
+    int k = slots_text(idx, got, sizeof(got));
     lv_obj_t *cb = col_box(b, KIT_UI_CONTENT);
     lv_obj_set_style_pad_top(cb, 8, 0);
     kit_ui_label(cb, "COLADA EM", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
@@ -1089,7 +1104,8 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
     s_album = malloc(sizeof(*s_album));
     if (!s_album) return KIT_ERR_NO_MEM;
-    fig_album_load(s_album, open_data);
+    bool upgraded = false;
+    fig_album_load(s_album, open_data, &upgraded);
     memset(&s_sess, 0, sizeof(s_sess));
     s_sess.place = -1;
     int32_t nome = 1;
@@ -1119,6 +1135,10 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
         s_scan_timer = lv_timer_create(scan_tick, SCAN_MS, NULL);
     }
     refresh_game();
+    if (upgraded) {
+        save();
+        toast("PÁGINA NOVA: LETRAS");
+    }
     return KIT_OK;
 }
 

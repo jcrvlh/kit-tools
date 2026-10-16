@@ -4,20 +4,34 @@
  */
 
 #include "album.h"
+#include <stddef.h>
 #include <string.h>
 
 /* Primeira constante global alinhada (ver o README do hello_sd). */
 const uint8_t FIG_PAGE_FIRST[FIG_PAGES] __attribute__((aligned(4))) = {
-    FIG_S_CH1, FIG_S_ABERTA, FIG_S_MAD, FIG_S_OCULTA
+    FIG_S_CH1, FIG_S_ABERTA, FIG_S_MAD, FIG_S_LETRA_A, FIG_S_OCULTA
 };
-const uint8_t FIG_PAGE_COUNT[FIG_PAGES] = { 13, 4, 5, 6 };
+const uint8_t FIG_PAGE_COUNT[FIG_PAGES] = { 13, 4, 5, 26, 6 };
 
 const char *const FIG_PLACE_NAME[FIG_PLACE_NAMES + 1] = {
     "", "CASA", "TRABALHO", "ESCOLA", "ACADEMIA", "FAMÍLIA", "OUTRO"
 };
 
 #define FIG_MAGIC   0x4D424C41u   /* "ALBM" */
-#define FIG_VERSION 1u
+#define FIG_VERSION 2u   /* 1 = sem a página Letras (28 vagas) */
+
+/* Layout da versão 1 do arquivo, só pra migrar. */
+typedef struct {
+    uint32_t    magic;
+    uint32_t    version;
+    uint32_t    gen;
+    uint16_t    nnets;
+    uint16_t    visits;
+    uint16_t    slots[FIG_SLOTS_V1];
+    fig_place_t places[FIG_MAX_PLACES];
+    fig_net_t   nets[FIG_MAX_NETS];
+    uint32_t    crc;
+} fig_album_v1_t;
 
 static const char *const FILE_NAME[2] = { "album_a.bin", "album_b.bin" };
 
@@ -136,6 +150,28 @@ static int auth_slot(uint8_t auth)
     }
 }
 
+int fig_letter_slot(const char *ssid)
+{
+    const uint8_t *p = (const uint8_t *)ssid;
+    while (*p == ' ') p++;
+    uint8_t c = p[0];
+    if (c >= 'a' && c <= 'z') c = (uint8_t)(c - 32);
+    if (c >= 'A' && c <= 'Z') return FIG_S_LETRA_A + (c - 'A');
+    if (c != 0xC3) return -1;
+    /* Latin-1 em UTF-8 (C3 xx): maiúscula 80-9F, minúscula A0-BF */
+    uint8_t d = (uint8_t)(p[1] | 0x20);
+    char base = 0;
+    if (d >= 0xA0 && d <= 0xA5)      base = 'A';
+    else if (d == 0xA7)              base = 'C';
+    else if (d >= 0xA8 && d <= 0xAB) base = 'E';
+    else if (d >= 0xAC && d <= 0xAF) base = 'I';
+    else if (d == 0xB1)              base = 'N';
+    else if (d >= 0xB2 && d <= 0xB6) base = 'O';
+    else if (d >= 0xB9 && d <= 0xBC) base = 'U';
+    else if (d == 0xBD)              base = 'Y';
+    return base ? FIG_S_LETRA_A + (base - 'A') : -1;
+}
+
 int fig_keys(const fig_album_t *a, const fig_net_t *n, int extra_mesh, uint8_t *out, int max)
 {
     int k = 0;
@@ -150,6 +186,8 @@ int fig_keys(const fig_album_t *a, const fig_net_t *n, int extra_mesh, uint8_t *
     if (fig_mesh_count(a, n->ssid) + extra_mesh >= 3) PUSH(FIG_S_BANDO);
     if (n->rssi >= FIG_ENCOSTADO) PUSH(FIG_S_ENCOSTADO);
     if (n->days >= FIG_FIEL_DIAS) PUSH(FIG_S_FIEL);
+    s = fig_letter_slot(n->ssid);
+    if (s >= 0) PUSH(s);
 #undef PUSH
     return k;
 }
@@ -395,18 +433,45 @@ static uint32_t crc32(const uint8_t *p, size_t n)
 
 #define FIG_CRC_LEN (sizeof(fig_album_t) - sizeof(uint32_t))
 
-static bool read_one(fig_album_t *dst, fig_open_fn open_fn, const char *name)
+/* Lê um arquivo por cima de `dst`. Devolve a versão válida encontrada (2 ou
+ * 1, com o conteúdo ainda no layout da v1) ou 0. */
+static int read_one(fig_album_t *dst, fig_open_fn open_fn, const char *name)
 {
     FILE *f = open_fn(name, "rb");
-    if (!f) return false;
+    if (!f) return 0;
     size_t got = fread(dst, 1, sizeof(*dst), f);
     fclose(f);
-    return got == sizeof(*dst) && dst->magic == FIG_MAGIC && dst->version == FIG_VERSION &&
-           dst->nnets <= FIG_MAX_NETS && dst->crc == crc32((const uint8_t *)dst, FIG_CRC_LEN);
+    if (dst->magic != FIG_MAGIC || dst->nnets > FIG_MAX_NETS) return 0;
+    if (dst->version == FIG_VERSION && got == sizeof(*dst) &&
+        dst->crc == crc32((const uint8_t *)dst, FIG_CRC_LEN))
+        return 2;
+    if (dst->version == 1 && got == sizeof(fig_album_v1_t)) {
+        const fig_album_v1_t *v1 = (const fig_album_v1_t *)(const void *)dst;
+        if (v1->crc == crc32((const uint8_t *)dst, sizeof(fig_album_v1_t) - sizeof(uint32_t)))
+            return 1;
+    }
+    return 0;
 }
 
-bool fig_album_load(fig_album_t *a, fig_open_fn open_fn)
+/* v1 -> v2 no lugar: abre espaço pras 26 vagas novas e cola, em cada letra, a
+ * primeira rede já revelada que começa com ela. */
+static void upgrade_v1(fig_album_t *a)
 {
+    uint8_t *p = (uint8_t *)a;
+    size_t len = sizeof(fig_place_t) * FIG_MAX_PLACES + sizeof(fig_net_t) * FIG_MAX_NETS;
+    memmove(p + offsetof(fig_album_t, places), p + offsetof(fig_album_v1_t, places), len);
+    for (int i = FIG_SLOTS_V1; i < FIG_SLOTS; i++) a->slots[i] = 0;
+    a->version = FIG_VERSION;
+    for (int i = 0; i < a->nnets; i++) {
+        if (a->nets[i].flags & FIG_F_SEALED) continue;
+        int s = fig_letter_slot(a->nets[i].ssid);
+        if (s >= 0 && !a->slots[s]) a->slots[s] = (uint16_t)(i + 1);
+    }
+}
+
+bool fig_album_load(fig_album_t *a, fig_open_fn open_fn, bool *upgraded)
+{
+    if (upgraded) *upgraded = false;
     /* Lê os dois por cima de `a`, um de cada vez, e fica com o de maior gen. */
     uint32_t best_gen = 0;
     int best = -1;
@@ -416,7 +481,13 @@ bool fig_album_load(fig_album_t *a, fig_open_fn open_fn)
             best_gen = a->gen;
         }
     }
-    if (best >= 0 && read_one(a, open_fn, FILE_NAME[best])) return true;
+    int v = best >= 0 ? read_one(a, open_fn, FILE_NAME[best]) : 0;
+    if (v == 2) return true;
+    if (v == 1) {
+        upgrade_v1(a);
+        if (upgraded) *upgraded = true;
+        return true;
+    }
     fig_album_reset(a);
     return false;
 }

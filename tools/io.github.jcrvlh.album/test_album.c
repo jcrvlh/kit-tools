@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 static char s_dir[256];
@@ -73,13 +74,14 @@ int main(void)
     fig_process_scan(a, &s, &c1, casa, 5, &o);
     assert(s.place == 0 && a->places[0].days == 1);
     assert(s.far == 1);
-    assert(o.new_ineditas == 2 && o.new_reps == 2);   /* Mesh(1) e oculta inéditas */
-    assert(fig_sealed_count(a) == 2);
+    /* inéditas: Mesh(1) (canal 6, WPA2, noite, M), Apto (letra A) e a oculta */
+    assert(o.new_ineditas == 3 && o.new_reps == 1);
+    assert(fig_sealed_count(a) == 3);
     assert(fig_filled(a) == 0);                       /* lacradas não contam */
     int first = fig_sealed_first(a);
     fig_reveal(a, first);
-    assert(fig_filled(a) == 3);                       /* canal 6, WPA2, noite */
-    fig_reveal(a, fig_sealed_first(a));
+    assert(fig_filled(a) == 4);                       /* canal 6, WPA2, noite, M */
+    while (fig_sealed_first(a) >= 0) fig_reveal(a, fig_sealed_first(a));
     assert(fig_slot_net(a, FIG_S_OCULTA) >= 0);
 
     /* mesma abertura, 2ª varredura: nada novo, dia não conta de novo */
@@ -134,7 +136,7 @@ int main(void)
     a->visits = 77;
     assert(fig_album_save(a, open_tmp));
     fig_album_t *b = malloc(sizeof(*b));
-    assert(fig_album_load(b, open_tmp));
+    assert(fig_album_load(b, open_tmp, NULL));
     assert(b->nnets == nn && b->visits == 77 && b->places[0].name == 1);
 
     /* arquivo mais novo corrompido: cai pro anterior */
@@ -144,8 +146,57 @@ int main(void)
     fseek(f, 100, SEEK_SET);
     fputc(0x5A, f);
     fclose(f);
-    assert(fig_album_load(b, open_tmp));
+    assert(fig_album_load(b, open_tmp, NULL));
     assert(b->visits != 77 && b->nnets == nn);
+
+    /* letras: 1ª letra do nome, acento pela letra base */
+    assert(fig_letter_slot("Apto_302") == FIG_S_LETRA_A);
+    assert(fig_letter_slot("  zeca") == FIG_S_LETRA_A + 25);
+    assert(fig_letter_slot("\xC3\x89" "rica") == FIG_S_LETRA_A + 4);     /* É */
+    assert(fig_letter_slot("\xC3\xA7" "asa") == FIG_S_LETRA_A + 2);      /* ç */
+    assert(fig_letter_slot("2G-casa") == -1 && fig_letter_slot("") == -1);
+    assert(fig_slot_net(a, FIG_S_LETRA_A + 12) >= 0);                /* M de Mesh-Casa */
+
+    /* arquivo da versão 1 (sem Letras) migra e preenche as letras */
+    {
+        static uint8_t v1buf[sizeof(fig_album_t)];
+        fig_album_t *c = malloc(sizeof(*c));
+        fig_album_reset(c);
+        fig_session_t sv = { 0 };
+        fig_clock_t cv = at(2026, 10, 13, 21);
+        fig_process_scan(c, &sv, &cv, casa, 4, &o);
+        while (fig_sealed_first(c) >= 0) fig_reveal(c, fig_sealed_first(c));
+        c->slots[FIG_S_LETRA_A + 12] = 0;   /* como se a v1 não tivesse letras */
+        /* monta o layout v1: cabeçalho + 28 vagas + resto deslocado */
+        size_t hdr = offsetof(fig_album_t, slots);
+        size_t v1_places = hdr + sizeof(uint16_t) * FIG_SLOTS_V1;
+        size_t rest = sizeof(fig_place_t) * FIG_MAX_PLACES + sizeof(fig_net_t) * FIG_MAX_NETS;
+        size_t v1_size = v1_places + rest + sizeof(uint32_t);
+        c->version = 1;
+        memcpy(v1buf, c, hdr);
+        memcpy(v1buf + hdr, c->slots, sizeof(uint16_t) * FIG_SLOTS_V1);
+        memcpy(v1buf + v1_places, (uint8_t *)c + offsetof(fig_album_t, places), rest);
+        uint32_t crc = 0xFFFFFFFFu;
+        for (size_t i = 0; i < v1_size - 4; i++) {
+            crc ^= v1buf[i];
+            for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+        }
+        crc = ~crc;
+        memcpy(v1buf + v1_size - 4, &crc, 4);
+        snprintf(p, sizeof(p), "%s/album_a.bin", s_dir);
+        FILE *fa = fopen(p, "wb");
+        fwrite(v1buf, 1, v1_size, fa);
+        fclose(fa);
+        snprintf(p, sizeof(p), "%s/album_b.bin", s_dir);
+        remove(p);
+        bool up = false;
+        assert(fig_album_load(b, open_tmp, &up) && up);
+        assert(b->nnets == c->nnets && b->version == 2);
+        assert(strcmp(b->nets[0].ssid, "Mesh-Casa") == 0);
+        assert(fig_slot_net(b, FIG_S_LETRA_A + 12) >= 0);                /* M preenchida */
+        assert(fig_slot_net(b, FIG_S_LETRA_A) >= 0);                     /* A de Apto_302 */
+        free(c);
+    }
 
     snprintf(cmd, sizeof(cmd), "rm -rf %s", s_dir);
     system(cmd);
