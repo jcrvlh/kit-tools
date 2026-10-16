@@ -23,9 +23,9 @@ OUT = TOOL_DIR / "src" / "shapes.h"
 
 SS = 4  # subamostras por eixo (antialias)
 
-# lado do triângulo (px): figurinha pequena 96 -> 52/22, grande 192 -> 104/44
-TRI_SIZES = [22, 44, 52, 104]
-GRIP = 28
+# lado do triângulo (px) por tamanho de figurinha: 96 -> 52/22, 144 -> 78/33, 192 -> 104/44
+TRI_SIZES = [22, 33, 44, 52, 78, 104]
+GRIP = 44
 
 
 def tri_up(s):

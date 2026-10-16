@@ -32,11 +32,13 @@
 
 #define ACCENT       KIT_COLOR_GREEN
 #define SCAN_MS      6000          /* > KIT_WIFI_SCAN_MIN_GAP_MS + ~1 s de scan */
-#define TODAS_STEP   30            /* figurinhas por lote em "Todas as redes" */
-#define ENV_W        220
-#define ENV_H        250
-#define FLAP_H       64
-#define ENV_TRAVEL   170           /* px de arraste pra rasgar */
+#define TODAS_STEP   20            /* figurinhas por lote em "Todas as redes" */
+#define ENV_W        300
+#define ENV_H        240
+#define FLAP_H       70
+#define ENV_TRAVEL   200           /* px de arraste pra rasgar (de qualquer ponto da tela) */
+#define BTN_H        KIT_TOUCH_TARGET_COMFORTABLE   /* 80: piso de botão principal */
+#define CELL_W       ((KIT_UI_CONTENT - 12) / 2)    /* grade de 2 colunas */
 #define MAX_DEPTH    6
 
 /* Primeira constante global alinhada (ver o README do hello_sd). */
@@ -185,13 +187,14 @@ static lv_obj_t *no_click(lv_obj_t *o)
     return o;
 }
 
-/* Botão retangular: superfície `bg`, rótulo mono 20 em `fg`. */
-static lv_obj_t *button(lv_obj_t *parent, int w, int h, uint32_t bg, uint32_t fg,
+/* Botão de BTN_H: superfície `bg`, rótulo em `fg`. `pill` = botão de ação da
+ * JOGO (pílula, mono 26, como kit_ui_action_button); senão raio de chip. */
+static lv_obj_t *button(lv_obj_t *parent, int w, uint32_t bg, uint32_t fg, bool pill,
                         const char *txt, lv_event_cb_t cb, int code, lv_obj_t **lbl)
 {
-    lv_obj_t *b = kit_ui_rect(parent, w, h, bg, 18);
+    lv_obj_t *b = kit_ui_rect(parent, w, BTN_H, bg, pill ? BTN_H / 2 : 18);
     kit_ui_tap(b, cb, code);
-    lv_obj_t *l = kit_ui_label(b, txt, fg, &kit_mono_20, 3);
+    lv_obj_t *l = kit_ui_label(b, txt, fg, pill ? &kit_mono_26 : &kit_mono_20, 3);
     lv_obj_center(l);
     if (lbl) *lbl = l;
     return b;
@@ -212,7 +215,7 @@ static void toast(const char *msg)
     s_toast = kit_ui_rect(s_screen, KIT_UI_CONTENT, LV_SIZE_CONTENT, KIT_COLOR_SURFACE_ALT, 18);
     lv_obj_set_style_pad_all(s_toast, 16, 0);
     no_click(s_toast);
-    lv_obj_t *l = kit_ui_label(s_toast, msg, KIT_COLOR_TEXT, &kit_mono_16, 2);
+    lv_obj_t *l = kit_ui_label(s_toast, msg, KIT_COLOR_TEXT, &kit_mono_20, 2);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, KIT_UI_CONTENT - 32);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
@@ -283,9 +286,9 @@ static void refresh_game(void)
     } else if (waiting) {
         lv_label_set_text(s_hero_lbl, s_scan_err == KIT_ERR_NO_MEM ? "WI-FI SEM MEMÓRIA" : "PROCURANDO");
     } else if (sealed) {
-        lv_label_set_text(s_hero_lbl, sealed == 1 ? "INÉDITA PRA ABRIR" : "INÉDITAS PRA ABRIR");
+        lv_label_set_text(s_hero_lbl, sealed == 1 ? "INÉDITA" : "INÉDITAS");
     } else {
-        lv_label_set_text(s_hero_lbl, s_sess.far ? "CHEGUE PERTO" : "NADA INÉDITO AQUI");
+        lv_label_set_text(s_hero_lbl, s_sess.far ? "CHEGUE PERTO" : "NADA NOVO AQUI");
     }
 
     lv_label_set_text(s_place_lbl, s_have_scan ? place_caps() : "");
@@ -392,7 +395,7 @@ static void build_game(lv_obj_t *tile)
     kit_ui_flex(left, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 10);
     s_led = kit_ui_rect(left, 12, 12, ACCENT, LV_RADIUS_CIRCLE);
     s_place_lbl = kit_ui_label(left, "", KIT_COLOR_TEXT, &kit_mono_20, 3);
-    s_right_lbl = kit_ui_label(st, "", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    s_right_lbl = kit_ui_label(st, "", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
 
     lv_obj_t *hero = kit_ui_box(col);
     lv_obj_set_size(hero, KIT_UI_CONTENT, LV_SIZE_CONTENT);
@@ -408,17 +411,17 @@ static void build_game(lv_obj_t *tile)
     lv_obj_set_size(s_ring, 20, 20);
     lv_obj_align(s_ring, LV_ALIGN_CENTER, 0, 0);
     lv_obj_center(kit_ui_rect(s_radar, 20, 20, ACCENT, LV_RADIUS_CIRCLE));
-    s_hero_lbl = kit_ui_label(hero, "PROCURANDO", KIT_COLOR_TEXT, &kit_mono_20, 3);
+    s_hero_lbl = kit_ui_label(hero, "PROCURANDO", KIT_COLOR_TEXT, &kit_mono_26, 3);
     lv_label_set_long_mode(s_hero_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_hero_lbl, KIT_UI_CONTENT);
     lv_obj_set_style_text_align(s_hero_lbl, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_obj_t *btns = kit_ui_box(col);
     lv_obj_set_size(btns, KIT_UI_CONTENT, LV_SIZE_CONTENT);
-    kit_ui_flex(btns, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, 10, 0);
-    s_pack_btn = button(btns, KIT_UI_CONTENT, KIT_UI_BTN_H, KIT_COLOR_SURFACE, KIT_COLOR_TEXT_MUTED,
+    kit_ui_flex(btns, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_START, 12, 0);
+    s_pack_btn = button(btns, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT_MUTED, true,
                         "PACOTE VAZIO", game_cb, 0, &s_pack_lbl);
-    button(btns, KIT_UI_CONTENT, 64, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, "ÁLBUM", game_cb, 1, &s_album_lbl);
+    button(btns, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, true, "ÁLBUM", game_cb, 1, &s_album_lbl);
 }
 
 /* --- AJUSTE ------------------------------------------------------------ */
@@ -463,12 +466,12 @@ static void build_ajuste(lv_obj_t *tile)
     lv_obj_add_flag(p, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(p, LV_DIR_VER);
 
-    kit_ui_label(p, "NOME DA REDE", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    kit_ui_label(p, "NOME DA REDE", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
     kit_ui_chips(&s_name_chips, p, NAME_CHIPS, 2, s_show_name ? 0 : 1, ACCENT, on_name, NULL);
     lv_obj_t *gap = kit_ui_box(p);
     lv_obj_set_size(gap, 1, 12);
-    kit_ui_label(p, "COMEÇAR DE NOVO", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    button(p, KIT_UI_CONTENT, 84, KIT_COLOR_SURFACE, KIT_COLOR_RED, "ZERAR ÁLBUM", zero_cb, 0, &s_zero_lbl);
+    kit_ui_label(p, "COMEÇAR DE NOVO", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
+    button(p, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_RED, false, "ZERAR ÁLBUM", zero_cb, 0, &s_zero_lbl);
 }
 
 /* --- camada: cabeçalho e corpo ----------------------------------------- */
@@ -508,7 +511,7 @@ static void env_paint(void)
 {
     if (!s_env_grip) return;
     lv_obj_set_style_translate_x(s_env_grip, s_drag_dx, 0);
-    lv_obj_set_width(s_env_tear, s_drag_dx + 12);
+    lv_obj_set_width(s_env_tear, s_drag_dx + 24);
 }
 
 static void anim_stop(void)
@@ -558,7 +561,6 @@ static void env_open(void)
     if (s_env_open) return;
     s_env_open = true;
     s_drag = false;
-    if (s_over_body) lv_obj_set_scroll_dir(s_over_body, LV_DIR_VER);
     lv_obj_add_flag(s_env_grip, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_env_tear, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_env_hint, "");
@@ -569,22 +571,21 @@ static void env_open(void)
 static void env_press_cb(lv_event_t *e)
 {
     (void)e;
-    if (s_env_open) return;
+    if (s_env_open || !s_env) return;
     s_drag = true;
     s_drag_x0 = -1;
     s_drag_dx = 0;
-    lv_obj_set_scroll_dir(s_over_body, LV_DIR_NONE);   /* o arraste não rola a página */
 }
 
 static void env_release_cb(lv_event_t *e)
 {
     (void)e;
     if (s_env_open) return;
+    if (!s_env) return;
     bool moved = s_drag_dx > 12;
     s_drag = false;
     s_drag_dx = 0;
     env_paint();
-    lv_obj_set_scroll_dir(s_over_body, LV_DIR_VER);
     if (!moved) {
         lv_label_set_text(s_env_hint, "ARRASTE NA LINHA");
         lv_obj_set_style_text_color(s_env_hint, lv_color_hex(KIT_COLOR_YELLOW), 0);
@@ -634,15 +635,15 @@ static void build_pack(void)
         s_env_open = false;
         s_drag = false;
         s_drag_dx = 0;
-        s_env = kit_ui_box(b);
+        /* A área de baixo INTEIRA é a zona de arraste (o dedo não precisa
+         * achar a alça): o corpo não rola e absorve o gesto, sem chain. */
+        lv_obj_set_scroll_dir(b, LV_DIR_NONE);
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(b, env_press_cb, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(b, env_release_cb, LV_EVENT_RELEASED, NULL);
+        s_env = no_click(kit_ui_box(b));
         lv_obj_set_size(s_env, ENV_W, ENV_H);
-        /* SCROLLABLE sem chain: absorve o arraste (padrão kit_ui_sigla) */
-        lv_obj_add_flag(s_env, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_remove_flag(s_env, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-        lv_obj_add_flag(s_env, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_ext_click_area(s_env, 12);
-        lv_obj_add_event_cb(s_env, env_press_cb, LV_EVENT_PRESSED, NULL);
-        lv_obj_add_event_cb(s_env, env_release_cb, LV_EVENT_RELEASED, NULL);
 
         lv_obj_t *body = no_click(kit_ui_rect(s_env, ENV_W, ENV_H - FLAP_H, KIT_COLOR_SURFACE, 18));
         lv_obj_set_pos(body, 0, FLAP_H);
@@ -651,19 +652,20 @@ static void build_pack(void)
         lv_obj_set_pos(s_env_flap, 0, 0);
         lv_obj_t *cut = no_click(kit_ui_rect(s_env, ENV_W, 3, KIT_COLOR_TEXT_MUTED, 0));
         lv_obj_set_pos(cut, 0, FLAP_H - 1);
-        s_env_tear = no_click(kit_ui_rect(s_env, 12, 5, KIT_COLOR_YELLOW, 0));
+        s_env_tear = no_click(kit_ui_rect(s_env, 24, 6, KIT_COLOR_YELLOW, 0));
         lv_obj_set_pos(s_env_tear, 0, FLAP_H - 2);
         s_env_grip = lv_image_create(s_env);
         no_click(s_env_grip);
         lv_image_set_src(s_env_grip, &grip_img);
         lv_obj_set_style_image_recolor(s_env_grip, lv_color_hex(KIT_COLOR_YELLOW), 0);
         lv_obj_set_style_image_recolor_opa(s_env_grip, LV_OPA_COVER, 0);
-        lv_obj_set_pos(s_env_grip, 4, FLAP_H - GRIP_H / 2);
+        lv_obj_set_pos(s_env_grip, 8, FLAP_H - GRIP_H / 2);
 
         lv_obj_t *meta = col_box(b, KIT_UI_CONTENT);
         lv_obj_set_flex_align(meta, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        kit_ui_label(meta, "ARRASTE PRA ABRIR", KIT_COLOR_TEXT, &kit_mono_20, 3);
-        s_env_hint = kit_ui_label(meta, "PASSE O DEDO NA LINHA", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+        no_click(meta);
+        kit_ui_label(meta, "ARRASTE PRA ABRIR", KIT_COLOR_TEXT, &kit_mono_26, 3);
+        s_env_hint = kit_ui_label(meta, "DEDO PRA DIREITA", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
         return;
     }
 
@@ -676,11 +678,11 @@ static void build_pack(void)
     lv_obj_set_style_pad_row(s_rise_obj, 10, 0);
     no_click(s_rise_obj);
     lv_obj_t *st = art_sticker(s_rise_obj, s_album, s_rev_idx, ART_BIG);
-    if (fig_is_rare(n)) art_sheen_start(st, ART_BIG);
+    art_motion_start(st, ART_BIG, fig_is_rare(n));
 
     char line[48], nm[KIT_WIFI_SSID_MAX + 12];
     snprintf(line, sizeof(line), fig_is_rare(n) ? "#%03d  BRILHANTE" : "#%03d", s_rev_idx + 1);
-    kit_ui_label(s_rise_obj, line, fig_is_rare(n) ? KIT_COLOR_YELLOW : KIT_COLOR_TEXT_MUTED, &kit_mono_20, 3);
+    kit_ui_label(s_rise_obj, line, fig_is_rare(n) ? KIT_COLOR_YELLOW : KIT_COLOR_TEXT_MUTED, &kit_mono_26, 3);
     net_name(s_rev_idx, nm, sizeof(nm));
     lv_obj_t *nl = kit_ui_text(s_rise_obj, nm, KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
     (void)nl;
@@ -691,10 +693,10 @@ static void build_pack(void)
     int o = snprintf(got, sizeof(got), "COLOU EM ");
     for (int i = 0; i < k && o < (int)sizeof(got) - 16; i++)
         o += snprintf(got + o, sizeof(got) - o, i ? ", %s" : "%s", SLOT_CAP[sl[i]]);
-    lv_obj_t *gl = kit_ui_text(s_rise_obj, got, ACCENT, &kit_mono_16, KIT_UI_CONTENT);
+    lv_obj_t *gl = kit_ui_text(s_rise_obj, got, ACCENT, &kit_mono_20, KIT_UI_CONTENT);
     lv_obj_set_style_text_letter_space(gl, 2, 0);
     kit_ui_label(s_rise_obj, fig_sealed_count(s_album) ? "TOQUE PRA PRÓXIMA" : "TOQUE PRA FECHAR",
-                 KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+                 KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
 
     lv_obj_set_style_translate_y(s_rise_obj, 64, 0);
     lv_obj_set_style_opa(s_rise_obj, LV_OPA_TRANSP, 0);
@@ -717,7 +719,7 @@ static lv_obj_t *row(lv_obj_t *parent, const char *label, const char *value, boo
     lv_obj_set_style_pad_left(r, 20, 0);
     lv_obj_set_style_pad_right(r, 16, 0);
     kit_ui_flex(r, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_START, 0, 12);
-    lv_obj_t *l = kit_ui_label(r, label, muted_label ? KIT_COLOR_TEXT_MUTED : KIT_COLOR_TEXT, &kit_sans_22, 0);
+    lv_obj_t *l = kit_ui_label(r, label, muted_label ? KIT_COLOR_TEXT_MUTED : KIT_COLOR_TEXT, &kit_sans_28, 0);
     lv_obj_set_flex_grow(l, 1);
     kit_ui_label(r, value, KIT_COLOR_TEXT, &kit_mono_20, 2);
     return r;
@@ -734,12 +736,12 @@ static void build_album(void)
     lv_obj_t *l = col_box(top, LV_SIZE_CONTENT);
     lv_obj_t *n1 = kit_ui_label(l, "", KIT_COLOR_TEXT, &kit_display_44, 0);
     lv_label_set_text_fmt(n1, "%d/%d", fig_filled(s_album), FIG_SLOTS);
-    kit_ui_label(l, "VAGAS COLADAS", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    kit_ui_label(l, "VAGAS", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
     lv_obj_t *r = col_box(top, LV_SIZE_CONTENT);
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
     lv_obj_t *n2 = kit_ui_label(r, "", KIT_COLOR_TEXT, &kit_display_44, 0);
     lv_label_set_text_fmt(n2, "%d", s_album->nnets - fig_sealed_count(s_album));
-    kit_ui_label(r, "REDES", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    kit_ui_label(r, "REDES", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
 
     char v[24];
     for (int p = 0; p < FIG_PAGES; p++) {
@@ -783,17 +785,17 @@ static void more_cb(lv_event_t *e)
 /* Célula da grade: figurinha da rede `idx`, ou vaga vazia com `mark`. */
 static void cell(lv_obj_t *grid, int idx, const char *cap, const char *mark)
 {
-    lv_obj_t *c = col_box(grid, 104);
+    lv_obj_t *c = col_box(grid, CELL_W);
     lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     if (idx >= 0) {
-        art_sticker(c, s_album, idx, ART_SMALL);
+        art_sticker(c, s_album, idx, ART_MID);
         kit_ui_tap(c, sticker_cb, idx);
         lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, LV_STATE_PRESSED);
         lv_obj_set_style_opa(c, LV_OPA_70, LV_STATE_PRESSED);
     } else {
-        art_empty(c, mark);
+        art_empty(c, mark, ART_MID);
     }
-    kit_ui_label(c, cap, idx >= 0 ? KIT_COLOR_TEXT : KIT_COLOR_TEXT_MUTED, &kit_mono_16, 1);
+    kit_ui_label(c, cap, idx >= 0 ? KIT_COLOR_TEXT : KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
 }
 
 static void build_page(int page)
@@ -821,9 +823,9 @@ static void build_page(int page)
         }
         int total = s_album->nnets - fig_sealed_count(s_album);
         if (!total) kit_ui_text(b, "Nenhuma figurinha ainda. Abra o Álbum em lugares diferentes.",
-                                KIT_COLOR_TEXT_MUTED, &kit_sans_22, KIT_UI_CONTENT);
+                                KIT_COLOR_TEXT_MUTED, &kit_sans_28, KIT_UI_CONTENT);
         if (shown < total)
-            button(b, KIT_UI_CONTENT, 76, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, "MOSTRAR MAIS", more_cb, 0, NULL);
+            button(b, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, false, "MOSTRAR MAIS", more_cb, 0, NULL);
         return;
     }
 
@@ -844,8 +846,8 @@ static void spec(lv_obj_t *parent, const char *k, const char *v)
     lv_obj_t *r = kit_ui_box(parent);
     lv_obj_set_size(r, KIT_UI_CONTENT, LV_SIZE_CONTENT);
     kit_ui_flex(r, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_SPACE_BETWEEN, 0, 12);
-    kit_ui_label(r, k, KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
-    kit_ui_label(r, v, KIT_COLOR_TEXT, &kit_mono_16, 2);
+    kit_ui_label(r, k, KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
+    kit_ui_label(r, v, KIT_COLOR_TEXT, &kit_mono_20, 2);
 }
 
 static void build_ficha(int idx)
@@ -857,7 +859,7 @@ static void build_ficha(int idx)
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t *st = art_sticker(b, s_album, idx, ART_BIG);
-    if (fig_is_rare(n)) art_sheen_start(st, ART_BIG);
+    art_motion_start(st, ART_BIG, fig_is_rare(n));
     char nm[KIT_WIFI_SSID_MAX + 12];
     net_name(idx, nm, sizeof(nm));
     kit_ui_text(b, nm, KIT_COLOR_TEXT, &kit_sans_28, KIT_UI_CONTENT);
@@ -893,7 +895,7 @@ static void build_ficha(int idx)
         o += snprintf(got + o, sizeof(got) - o, i ? ", %s" : "%s", SLOT_CAP[sl[i]]);
     lv_obj_t *cb = col_box(b, KIT_UI_CONTENT);
     lv_obj_set_style_pad_top(cb, 8, 0);
-    kit_ui_label(cb, "COLADA EM", KIT_COLOR_TEXT_MUTED, &kit_mono_16, 2);
+    kit_ui_label(cb, "COLADA EM", KIT_COLOR_TEXT_MUTED, &kit_mono_20, 2);
     lv_obj_t *gl = kit_ui_label(cb, k ? got : "TODAS AS REDES", KIT_COLOR_TEXT, &kit_mono_20, 2);
     lv_label_set_long_mode(gl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(gl, KIT_UI_CONTENT);
@@ -921,7 +923,7 @@ static void build_lugares(void)
     snprintf(v, sizeof(v), "%d", c);
     no_click(row(b, "Passeio", v, false));
     kit_ui_text(b, "Abrindo no mesmo lugar em 3 dias diferentes, o KIT pergunta o nome dele.",
-                KIT_COLOR_TEXT_MUTED, &kit_sans_22, KIT_UI_CONTENT);
+                KIT_COLOR_TEXT_MUTED, &kit_sans_28, KIT_UI_CONTENT);
 }
 
 static void on_place(int idx, void *user)
@@ -951,14 +953,14 @@ static void build_lugar(int p)
     int sug = fig_suggest_place(s_album, &clk);
     kit_ui_chips(&s_place_chips, b, PLACE_CHIPS, FIG_PLACE_NAMES, sug ? sug - 1 : -1,
                  ACCENT, on_place, (void *)(intptr_t)p);
-    button(b, KIT_UI_CONTENT, 76, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, "AGORA NÃO", later_cb, 0, NULL);
+    button(b, KIT_UI_CONTENT, KIT_COLOR_SURFACE, KIT_COLOR_TEXT, false, "AGORA NÃO", later_cb, 0, NULL);
 }
 
 /* --- render da camada -------------------------------------------------- */
 
 static void render_over(void)
 {
-    art_sheen_stop();
+    art_motion_stop();
     anim_stop();
     s_env = s_env_flap = s_env_tear = s_env_grip = s_env_hint = s_rise_obj = NULL;
     s_drag = false;
@@ -997,6 +999,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
     if (!ctx || !ctx->api) return KIT_ERR_INVALID_ARG;
     s_api = ctx->api;
     kit_ui_bind(s_api);
+    art_bind(s_api);
 
     s_album = malloc(sizeof(*s_album));
     if (!s_album) return KIT_ERR_NO_MEM;
@@ -1037,7 +1040,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
 {
     if (s_api && s_api->wifi) s_api->wifi->cancel();
     if (s_api && s_api->input) s_api->input->register_callback(NULL, NULL);
-    art_sheen_stop();
+    art_motion_stop();
     anim_stop();
     if (s_scan_timer)  lv_timer_delete(s_scan_timer);
     if (s_fx_timer)    lv_timer_delete(s_fx_timer);
