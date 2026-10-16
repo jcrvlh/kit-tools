@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.album",
+  "name": "Álbum",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.18.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Álbum de figurinhas de Wi-Fi: cada rede nova que o KIT enxerga por perto vira figurinha. Só olha as redes, nunca conecta.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#45A05B",
+  "home_icon": "card",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "input",
+    "storage",
+    "time",
+    "audio",
+    "imu",
+    "wifi_scan"
+  ],
+  "api_level": 1,
+  "assets": []
+}
