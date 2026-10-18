@@ -1,0 +1,375 @@
+# Banco de perguntas do Duo — fonte de verdade.
+# Uma pergunta por linha: tema<TAB>pergunta<TAB>opcao1|opcao2[|opcao3|opcao4][<TAB>conhece]
+# Temas: geral, amigos, casal, polemica. Opções P1|P2 = pergunta "Quem...?".
+# 4ª coluna "conhece" = só no modo ME CONHECE (fato que os dois sabem; no COMBINA sempre bate).
+# Regenerar src/duo_bank.h: python3 scripts/make_bank.py
+
+geral	Praia ou serra?	Praia|Serra
+geral	Doce ou salgado?	Doce|Salgado
+geral	Cachorro ou gato?	Cachorro|Gato
+geral	Mais disposto de manhã ou de noite?	Manhã|Noite
+geral	Ligar ou mandar mensagem?	Ligar|Mensagem
+geral	Viagem: planejar tudo ou improvisar?	Planejar|Improvisar
+geral	Calor ou frio?	Calor|Frio
+geral	Filme ou série?	Filme|Série
+geral	Cozinhar ou pedir delivery?	Cozinhar|Delivery
+geral	Banho quente ou gelado?	Quente|Gelado
+geral	Feriado: viajar ou ficar em casa?	Viajar|Em casa
+geral	Fone ou caixinha de som?	Fone|Caixinha
+geral	Sol ou chuva?	Sol|Chuva
+geral	Celular no silencioso ou com som?	Silencioso|Com som
+geral	Arruma a cama todo dia?	Sim|Não
+geral	Sorvete: casquinha ou pote?	Casquinha|Pote
+geral	Ler o livro ou ver o filme?	Livro|Filme
+geral	Pizza: com a mão ou garfo e faca?	Mão|Talher
+geral	Bebida favorita?	Café|Chá|Suco|Refri
+geral	Estação favorita?	Verão|Outono|Inverno|Primavera
+geral	Gênero de filme favorito?	Comédia|Terror|Drama|Ação
+geral	Domingo ideal?	Sofá|Passeio|Festa|Família
+geral	Que superpoder?	Voar|Invisível|Teleporte|Ler mentes
+geral	Melhor refeição do dia?	Café|Almoço|Lanche|Jantar
+geral	Pizza favorita?	Calabresa|Mussarela|Portuguesa|Frango
+geral	Que bicho você seria?	Gato|Cachorro|Coruja|Preguiça
+geral	Ganhou na loteria. E agora?	Viajar|Casa nova|Guardar|Torrar
+geral	Pior tarefa de casa?	Louça|Banheiro|Roupa|Lixo
+geral	Que horas vai dormir?	Antes 22h|22h a 0h|0h a 2h|Depois 2h
+geral	Férias dos sonhos?	Praia|Neve|Cidade|Mochilão
+geral	Quem acorda mais cedo?	P1|P2
+geral	Quem passa mais tempo no celular?	P1|P2
+geral	Quem é mais bagunceiro?	P1|P2
+geral	Quem canta pior?	P1|P2
+geral	Quem se perde mais fácil?	P1|P2
+geral	Quem é mais friorento?	P1|P2
+geral	Quem come mais?	P1|P2
+geral	Quem é mais teimoso?	P1|P2
+geral	Já dormiu no cinema?	Sim|Não
+geral	Fala sozinho?	Sim|Não
+geral	Lê o manual antes de usar?	Sim|Não
+geral	Tem medo de barata?	Sim|Não
+geral	Canta no banho?	Sim|Não
+geral	Deixa tudo pra última hora?	Sim|Não
+geral	Quem é mais medroso?	P1|P2
+geral	Quem ri mais alto?	P1|P2
+geral	Quem é mais pão-duro?	P1|P2
+geral	Quem dirige melhor?	P1|P2
+geral	Quem é mais esquecido?	P1|P2
+geral	Quem é mais curioso?	P1|P2
+geral	Quem fala mais?	P1|P2
+geral	Quem é mais vaidoso?	P1|P2
+geral	Quem tem mais paciência?	P1|P2
+geral	Quem aguenta mais pimenta?	P1|P2
+geral	Já quebrou um osso?	Sim|Não
+geral	Sabe nadar?	Sim|Não
+geral	Dorme de meia?	Sim|Não
+geral	Come a borda da pizza?	Sim|Não
+geral	Tem uma mania estranha?	Sim|Não
+geral	Lembra dos sonhos quando acorda?	Sim|Não
+geral	Aperta a soneca?	Sim|Não
+geral	Já perdeu um voo ou ônibus?	Sim|Não
+geral	Tem medo de altura?	Sim|Não
+geral	Coleciona alguma coisa?	Sim|Não
+geral	Já foi a um show sozinho?	Sim|Não
+geral	Pede sempre o mesmo prato?	Sim|Não
+geral	Mar ou piscina?	Mar|Piscina
+geral	Campo ou cidade?	Campo|Cidade
+geral	Elevador ou escada?	Elevador|Escada
+geral	Janela ou corredor?	Janela|Corredor
+geral	Mensagem longa ou curta?	Longa|Curta
+geral	Mercado: com lista ou sem lista?	Com lista|Sem lista
+geral	Pipoca: manteiga ou caramelo?	Manteiga|Caramelo
+geral	Chocolate ao leite ou amargo?	Ao leite|Amargo
+geral	Casa ou apartamento?	Casa|Apê
+geral	Carro ou bicicleta?	Carro|Bike
+geral	Tênis ou chinelo?	Tênis|Chinelo
+geral	Montanha-russa ou roda-gigante?	Montanha-russa|Roda-gigante
+geral	Viajar no tempo: passado ou futuro?	Passado|Futuro
+geral	Brincadeira de infância?	Pique-pega|Esconde|Bola|Videogame
+geral	Fruta favorita?	Manga|Morango|Banana|Uva
+geral	Sobremesa favorita?	Pudim|Brigadeiro|Sorvete|Torta
+geral	Preso um dia inteiro em...	Shopping|Biblioteca|Mercado|Parque
+geral	Que instrumento tocaria?	Violão|Piano|Bateria|Sax
+geral	Esporte pra assistir?	Futebol|Vôlei|Fórmula 1|Nenhum
+geral	Matéria favorita na escola?	Matemática|Português|História|Ed. física
+geral	Dia da semana favorito?	Sexta|Sábado|Domingo|Outro
+geral	Cor favorita?	Azul|Vermelho|Preto|Verde
+geral	Que profissão teria?	Médico|Artista|Chef|Astronauta
+geral	Café da manhã ideal?	Pão|Frutas|Tapioca|Ovos
+geral	Tempero que não vive sem?	Alho|Pimenta|Cebola|Limão
+amigos	Quem chega atrasado?	P1|P2
+amigos	Quem manda mais áudio?	P1|P2
+amigos	Quem chora em filme?	P1|P2
+amigos	Quem sai primeiro da festa?	P1|P2
+amigos	Quem esquece aniversário?	P1|P2
+amigos	Quem é mais competitivo?	P1|P2
+amigos	Quem guarda segredo melhor?	P1|P2
+amigos	Quem sobrevive a um apocalipse zumbi?	P1|P2
+amigos	Quem paga a conta e esquece de cobrar?	P1|P2
+amigos	Quem demora mais pra responder?	P1|P2
+amigos	Quem conta a pior piada?	P1|P2
+amigos	Quem é mais dramático?	P1|P2
+amigos	Segredo: guarda ou conta?	Guarda|Conta
+amigos	Viagem: hotel ou camping?	Hotel|Camping
+amigos	Mensagem: responde na hora ou deixa no vácuo?	Na hora|Vácuo
+amigos	Festa: chega cedo ou chega tarde?	Cedo|Tarde
+amigos	Conselho: sincero ou fofo?	Sincero|Fofo
+amigos	Plano cancelado: chateado ou aliviado?	Chateado|Aliviado
+amigos	No grupo: fala muito ou só lê?	Fala muito|Só lê
+amigos	Foto: posar ou sair natural?	Posar|Natural
+amigos	Rolê ideal?	Bar|Show|Jogo|Viagem
+amigos	Papel no grupo?	Piadista|Mãezona|Sumido|Líder
+amigos	Lanche da madrugada?	Pizza|Hambúrguer|Pastel|Miojo
+amigos	Karaokê: que estilo?	Sertanejo|Pagode|Rock|Pop
+amigos	Jogo pra noite?	Cartas|Tabuleiro|Videogame|Mímica
+amigos	Presente de amigo secreto?	Chocolate|Livro|Roupa|Caneca
+amigos	Num filme, você seria...	Herói|Vilão|Mocinho|Figurante
+amigos	Na viagem em grupo, você...	Organiza|Dirige|Cozinha|Dorme
+amigos	Primeira coisa ao acordar?	Celular|Café|Banho|Soneca
+amigos	Bebida de rolê?	Cerveja|Drink|Refri|Água
+amigos	Quem é mais fofoqueiro?	P1|P2
+amigos	Quem casa primeiro?	P1|P2
+amigos	Quem ficaria famoso?	P1|P2
+amigos	Quem perde mais coisas?	P1|P2
+amigos	Quem acorda de mau humor?	P1|P2
+amigos	Quem topa qualquer rolê?	P1|P2
+amigos	Quem dá o melhor conselho?	P1|P2
+amigos	Quem tira mais foto?	P1|P2
+amigos	Quem dança melhor?	P1|P2
+amigos	Quem seria preso primeiro?	P1|P2
+amigos	Já contou um segredo do outro?	Sim|Não
+amigos	Já fingiu que não viu a mensagem do outro?	Sim|Não
+amigos	Emprestaria dinheiro pro outro?	Sim|Não
+amigos	Já fingiu gostar de um presente?	Sim|Não
+amigos	Viajaria um mês só com o outro?	Sim|Não
+amigos	Já fuçou as redes do crush do outro?	Sim|Não
+amigos	Quem se mete em mais confusão?	P1|P2
+amigos	Quem é mais mão de vaca?	P1|P2
+amigos	Quem enrola mais pra decidir?	P1|P2
+amigos	Quem cancela o rolê em cima da hora?	P1|P2
+amigos	Quem lembra mais das histórias antigas?	P1|P2
+amigos	Quem se apaixona mais fácil?	P1|P2
+amigos	Quem dirige na volta?	P1|P2
+amigos	Quem come do prato do outro?	P1|P2
+amigos	Quem dorme primeiro na viagem?	P1|P2
+amigos	Quem fica rico primeiro?	P1|P2
+amigos	Quem morre primeiro num filme de terror?	P1|P2
+amigos	Quem chama pra fazer as pazes?	P1|P2
+amigos	Quem vive com o celular sem bateria?	P1|P2
+amigos	Quem chora de rir mais fácil?	P1|P2
+amigos	Vocês já brigaram feio?	Sim|Não	conhece
+amigos	Já contou uma mentira pro outro?	Sim|Não
+amigos	Sabe o nome da mãe do outro?	Sim|Não
+amigos	Já dormiu na casa do outro?	Sim|Não
+amigos	Vocês já viajaram juntos?	Sim|Não	conhece
+amigos	Tem foto vergonhosa do outro?	Sim|Não
+amigos	Já chorou na frente do outro?	Sim|Não
+amigos	Empresta roupa pro outro?	Sim|Não
+amigos	Daria a senha do celular pro outro?	Sim|Não
+amigos	Já sentiu ciúme de outra amizade do outro?	Sim|Não
+amigos	Conta tudo pro outro?	Sim|Não
+amigos	Seria sócio do outro?	Sim|Não
+amigos	Rolê: planejado ou de última hora?	Planejado|Improviso
+amigos	Conversa: ao vivo ou por mensagem?	Ao vivo|Mensagem
+amigos	Encontro: em casa ou na rua?	Em casa|Na rua
+amigos	Aniversário: festa ou jantar?	Festa|Jantar
+amigos	Briga no grupo: toma partido ou fica neutro?	Partido|Neutro
+amigos	Amigo novo: confia logo ou demora?	Logo|Demora
+amigos	Desabafo: quer conselho ou só ouvido?	Conselho|Ouvido
+amigos	Racha da conta: pix na hora ou depois?	Na hora|Depois
+amigos	Show: pista ou camarote?	Pista|Camarote
+amigos	Fim de festa: dorme lá ou vai embora?	Dorme lá|Vai embora
+amigos	Como vocês se conheceram?	Escola|Trabalho|Internet|Rolê	conhece
+amigos	Programa de sábado?	Praia|Bar|Casa|Balada
+amigos	Viagem dos sonhos juntos?	Europa|Nordeste|Japão|Patagônia
+amigos	Melhor petisco?	Batata|Pastel|Coxinha|Torresmo
+amigos	Se fossem uma banda, você seria...	Vocal|Guitarra|Bateria|Baixo
+amigos	Numa briga, você...	Some|Grita|Chora|Resolve
+amigos	Jeito de animar o outro?	Comida|Piada|Abraço|Rolê
+amigos	Parabéns de aniversário?	Textão|Áudio|Figurinha|Ligação
+amigos	Esporte juntos?	Futebol|Corrida|Academia|Nenhum
+amigos	Num reality, você seria...	Vilão|Planta|Favorito|Expulso
+casal	Quem disse "eu te amo" primeiro?	P1|P2
+casal	Quem é mais ciumento?	P1|P2
+casal	Quem demora mais pra se arrumar?	P1|P2
+casal	Quem cozinha melhor?	P1|P2
+casal	Quem pede desculpa primeiro?	P1|P2
+casal	Quem rouba o cobertor?	P1|P2
+casal	Quem escolhe o filme?	P1|P2
+casal	Quem lembra das datas?	P1|P2
+casal	Quem dorme primeiro?	P1|P2
+casal	Quem deu o primeiro passo?	P1|P2
+casal	Quem é mais romântico?	P1|P2
+casal	Quem gasta mais?	P1|P2
+casal	Presente: surpresa ou pedido?	Surpresa|Pedido
+casal	Briga: resolver na hora ou esfriar?	Na hora|Esfriar
+casal	Dormir de conchinha ou cada um no seu canto?	Conchinha|Cada um
+casal	Jantar fora ou em casa?	Fora|Em casa
+casal	Declaração: em público ou só a dois?	Em público|A dois
+casal	Apelido carinhoso: sim ou não?	Sim|Não
+casal	Sobremesa: dividir ou cada um a sua?	Dividir|Cada um
+casal	Bom dia por mensagem todo dia?	Sim|Não
+casal	Encontro perfeito?	Jantar|Cinema|Viagem|Em casa
+casal	O que mais demonstra amor?	Palavras|Presentes|Carinho|Tempo
+casal	Melhor hora juntos?	Manhã|Tarde|Noite|Madrugada
+casal	Pra onde fugiriam?	Praia|Montanha|Cidade|Exterior
+casal	O que mais irrita no outro?	Atraso|Bagunça|Celular|Ronco
+casal	Filme pra ver juntos?	Romance|Comédia|Terror|Ação
+casal	Bicho de estimação juntos?	Cachorro|Gato|Peixe|Nenhum
+casal	Daqui a 10 anos, vocês...	Casa cheia|Viajando|Sossegados|Com pets
+casal	O que reparou primeiro no outro?	Olhos|Sorriso|Voz|Jeito
+casal	Programa de domingo a dois?	Sofá|Parque|Comer fora|Cozinhar
+casal	Quem ronca?	P1|P2
+casal	Quem fica bravo mais fácil?	P1|P2
+casal	Quem é mais carinhoso?	P1|P2
+casal	Quem esquece onde deixou a chave?	P1|P2
+casal	Quem manda no controle remoto?	P1|P2
+casal	Quem planeja as viagens?	P1|P2
+casal	Quem chora mais fácil?	P1|P2
+casal	Quem faz mais drama quando fica doente?	P1|P2
+casal	Quem se apaixonou primeiro?	P1|P2
+casal	Quem ganha as discussões?	P1|P2
+casal	Já olhou o celular do outro escondido?	Sim|Não
+casal	Escolheria o outro de novo?	Sim|Não
+casal	Já esqueceu uma data importante?	Sim|Não
+casal	Dorme brigado?	Sim|Não
+casal	Sabe a senha do celular do outro?	Sim|Não
+casal	Tatuaria o nome do outro?	Sim|Não
+casal	Quem mandou mensagem primeiro?	P1|P2
+casal	Quem fala "eu te amo" mais vezes?	P1|P2
+casal	Quem acorda o outro?	P1|P2
+casal	Quem lava a louça?	P1|P2
+casal	Quem escolheu o lado da cama?	P1|P2
+casal	Quem escolhe onde comer?	P1|P2
+casal	Quem conta as melhores histórias?	P1|P2
+casal	Quem se atrasa mais?	P1|P2
+casal	Quem cuida quando o outro fica doente?	P1|P2
+casal	Quem tem a família mais barulhenta?	P1|P2
+casal	Quem faria o pedido de casamento?	P1|P2
+casal	Quem é mais caseiro?	P1|P2
+casal	Quem posta mais foto do casal?	P1|P2
+casal	Quem se acha mais engraçado?	P1|P2
+casal	Lembra a data do primeiro beijo?	Sim|Não
+casal	Já chorou por causa do outro?	Sim|Não
+casal	Gosta da família do outro?	Sim|Não
+casal	Já fingiu gostar da comida do outro?	Sim|Não
+casal	Mudaria de cidade pelo outro?	Sim|Não
+casal	Usaria roupa combinando?	Sim|Não
+casal	Usaria a escova de dente do outro?	Sim|Não
+casal	Conta as brigas pros amigos?	Sim|Não
+casal	Já teve ciúme de um amigo do outro?	Sim|Não
+casal	Viajaria de férias sem o outro?	Sim|Não
+casal	Quer ter filhos?	Sim|Não
+casal	Ouve os áudios do outro até o fim?	Sim|Não
+casal	Casamento: festão ou só os íntimos?	Festão|Íntimos
+casal	Conta no banco: conjunta ou separada?	Conjunta|Separada
+casal	Férias: descansar ou explorar?	Descansar|Explorar
+casal	Saudade: liga ou manda mensagem?	Liga|Mensagem
+casal	Nome de filho ou pet: clássico ou diferente?	Clássico|Diferente
+casal	Aniversário de namoro: viagem ou presente?	Viagem|Presente
+casal	O primeiro encontro foi ótimo ou um desastre?	Ótimo|Desastre
+casal	Morar na cidade ou no mato?	Cidade|Mato
+casal	Dormir: ventilador ou ar-condicionado?	Ventilador|Ar
+casal	Série: juntos ou cada um a sua?	Juntos|Cada um
+casal	Onde foi o primeiro encontro?	Bar|Cinema|Casa|Jantar	conhece
+casal	Como vocês se conheceram?	Amigos|Internet|Trabalho|Festa	conhece
+casal	Dia de chuva juntos?	Filme|Dormir|Cozinhar|Jogo
+casal	O que o outro faz melhor em casa?	Cozinhar|Limpar|Organizar|Consertar
+casal	Música do casal é...	Romântica|Pagode|Rock|Sertanejo
+casal	Lugar pra pedir em casamento?	Praia|Jantar|Viagem|Em casa
+casal	Tempo até o primeiro "eu te amo"?	1 mês|3 meses|6 meses|1 ano	conhece
+casal	Maior qualidade do outro?	Humor|Carinho|Beleza|Paciência
+casal	Maior defeito do outro?	Atraso|Teimosia|Ciúme|Preguiça
+casal	Viagem a dois?	Praia|Serra|Europa|Interior
+polemica	Abacaxi na pizza?	Sim|Não
+polemica	Biscoito ou bolacha?	Biscoito|Bolacha
+polemica	Ketchup na pizza?	Sim|Não
+polemica	Feijão por cima ou por baixo do arroz?	Por cima|Por baixo
+polemica	Papel higiênico: pra frente ou pra trás?	Pra frente|Pra trás
+polemica	Banho de manhã ou de noite?	Manhã|Noite
+polemica	Pasta de dente: aperta do meio ou do fim?	Do meio|Do fim
+polemica	Meia com chinelo pode?	Pode|Não pode
+polemica	Cereal: leite antes ou depois?	Antes|Depois
+polemica	Conta do bar: divide igual ou cada um paga o seu?	Igual|Cada um
+polemica	Mentira pra não magoar vale?	Vale|Não vale
+polemica	Ex pode virar amigo?	Pode|Não pode
+polemica	Áudio de mais de um minuto é falta de educação?	Sim|Não
+polemica	Visualizar e não responder é grosseria?	Sim|Não
+polemica	Olhar o celular do parceiro: pode ou não pode?	Pode|Não pode
+polemica	Ligar sem avisar antes é invasão?	Sim|Não
+polemica	Reclinar a poltrona do avião?	Pode|Não pode
+polemica	Sapato dentro de casa?	Pode|Não pode
+polemica	Spoiler depois de uma semana vale?	Vale|Não vale
+polemica	Acredita em horóscopo?	Sim|Não
+polemica	Dar dinheiro de presente é falta de criatividade?	Sim|Não
+polemica	Pet é filho?	Sim|Não
+polemica	Quem tem as opiniões mais polêmicas?	P1|P2
+polemica	Quem perde a discussão e não admite?	P1|P2
+polemica	Quem tem o pior gosto musical?	P1|P2
+polemica	Voto deveria ser obrigatório?	Sim|Não
+polemica	Política se discute no almoço de família?	Sim|Não
+polemica	Já desfez amizade por política?	Sim|Não
+polemica	Você se considera de...	Esquerda|Direita|Centro|Nenhum
+polemica	Mais Estado ou menos Estado?	Mais|Menos
+polemica	Porte de arma: a favor ou contra?	A favor|Contra
+polemica	Pena de morte: a favor ou contra?	A favor|Contra
+polemica	Maioridade penal deveria baixar?	Sim|Não
+polemica	Legalizar a maconha?	Sim|Não
+polemica	Aborto legal: a favor ou contra?	A favor|Contra
+polemica	Cotas nas universidades: a favor ou contra?	A favor|Contra
+polemica	Votaria numa celebridade sem experiência?	Sim|Não
+polemica	Quem entende mais de política?	P1|P2
+polemica	Quem perde a paciência discutindo política?	P1|P2
+polemica	Acredita em Deus?	Sim|Não
+polemica	Acredita em vida após a morte?	Sim|Não
+polemica	Acredita em espíritos?	Sim|Não
+polemica	Acredita em milagre?	Sim|Não
+polemica	Religião?	Católica|Evangélica|Outra|Nenhuma
+polemica	Ensino religioso na escola pública?	A favor|Contra
+polemica	Igreja deveria pagar imposto?	Sim|Não
+polemica	Casamento: religioso ou só no cartório?	Religioso|Cartório
+polemica	Já mudou de religião?	Sim|Não
+polemica	Quem é mais religioso?	P1|P2
+polemica	Uva passa no arroz de Natal?	Sim|Não
+polemica	Pizza doce é pizza?	Sim|Não
+polemica	Arroz e feijão: mistura ou separado?	Mistura|Separado
+polemica	Café com ou sem açúcar?	Com|Sem
+polemica	Batata frita com maionese?	Sim|Não
+polemica	Chocotone ou panetone de frutas?	Chocotone|Frutas
+polemica	Gorjeta de 10% é obrigação?	Sim|Não
+polemica	Bater palma quando o avião pousa?	Sim|Não
+polemica	Celular na mesa de jantar?	Pode|Não pode
+polemica	Pedir o resto pra viagem é feio?	Sim|Não
+polemica	Chegar no horário em festa é estranho?	Sim|Não
+polemica	Ouvir áudio no 2x é normal?	Sim|Não
+polemica	Chamada de vídeo sem avisar?	Pode|Não pode
+polemica	Mandar print de conversa sem permissão?	Pode|Não pode
+polemica	Criança com celular antes dos 10 anos?	Pode|Não pode
+polemica	A inteligência artificial vai roubar empregos?	Sim|Não
+polemica	Trabalho remoto ou presencial?	Remoto|Presencial
+polemica	Semana de 4 dias: a favor ou contra?	A favor|Contra
+polemica	Responder o chefe fora do horário?	Sim|Não
+polemica	Contar o salário pros colegas?	Sim|Não
+polemica	Ciúme é prova de amor?	Sim|Não
+polemica	Amizade entre homem e mulher existe?	Sim|Não
+polemica	Morar junto antes de casar?	Sim|Não
+polemica	No casal, quem ganha mais paga mais?	Sim|Não
+polemica	Primeiro encontro: quem convidou paga?	Sim|Não
+polemica	Perdoaria uma traição?	Sim|Não
+polemica	Fogos de artifício deveriam ser proibidos?	Sim|Não
+polemica	Carnaval: ama ou odeia?	Ama|Odeia
+polemica	Tatuagem no rosto?	Pode|Não pode
+polemica	Zoológico deveria acabar?	Sim|Não
+polemica	Comer carne é errado?	Sim|Não
+polemica	Rodeio deveria acabar?	Sim|Não
+polemica	Quem defende opinião absurda só pra ganhar?	P1|P2
+polemica	Quem já brigou com estranho na internet?	P1|P2
+polemica	Quem muda de opinião mais fácil?	P1|P2
+polemica	Pior coisa num restaurante?	Demora|Barulho|Preço|Fila
+polemica	Pior vizinho?	Barulho|Fofoca|Obra|Cachorro
+polemica	Pior coisa no trabalho?	Reunião|Chefe|Trânsito|Salário
+polemica	Pior coisa nas redes?	Fake news|Briga|Anúncio|Influencer
+polemica	Assunto que estraga festa de família?	Política|Futebol|Herança|Religião
+polemica	Pior coisa num rolê?	Atraso|Celular|Fofoca|Bêbado
+polemica	Pior hábito no trânsito?	Buzinar|Fechar|Celular|Devagar
+polemica	Estilo musical mais chato?	Sertanejo|Funk|Pagode|Rock
+polemica	Pior coisa no grupo da família?	Bom dia|Fake news|Corrente|Política
+polemica	Pior pecado no cinema?	Celular|Conversa|Atraso|Spoiler
