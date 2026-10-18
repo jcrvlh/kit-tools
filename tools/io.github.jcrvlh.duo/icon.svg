@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!--
+    Ícone da Tool Duo — linguagem "Brutalist Bauhaus" do KIT.
+    Duas respostas que se encontram: o círculo azul (P1) e o paper (P2) se
+    sobrepõem, e o miolo comum é verde — o "bateu" da revelação. Fonte de
+    verdade; icon.png e icon.bin são gerados por scripts/make_icon.py.
+  -->
+  <rect x="14" y="8" width="212" height="224" rx="24"
+        fill="#0A0A0B" stroke="#3A3A3E" stroke-width="3"/>
+  <clipPath id="p1"><circle cx="92" cy="120" r="50"/></clipPath>
+  <circle cx="92" cy="120" r="50" fill="#2C3CC4"/>
+  <circle cx="148" cy="120" r="50" fill="#EFEADD"/>
+  <circle cx="148" cy="120" r="50" fill="#45A05B" clip-path="url(#p1)"/>
+</svg>

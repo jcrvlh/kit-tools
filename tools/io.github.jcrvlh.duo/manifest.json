@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "id": "io.github.jcrvlh.duo",
+  "name": "Duo",
+  "version": "1.0.0",
+  "version_code": 1,
+  "min_runtime": "0.15.0",
+  "max_runtime": "1.0.0",
+  "author": "jcrvlh",
+  "description": "Jogo de dupla passando o KIT de mão em mão: os dois respondem as mesmas perguntas, escondido, e no fim veem lado a lado o quanto bateu. No Me conhece, um tenta adivinhar o outro; no Combina, os dois respondem sobre si. 3 a 10 perguntas, nos temas Geral, Amigos, Casal e Polêmica.",
+  "icon": "icon.bin",
+  "kind": "game",
+  "accent": "#2C3CC4",
+  "home_icon": "ask",
+  "entry_point": "tool.so",
+  "arch": "xtensa-esp32s3",
+  "permissions": [
+    "display",
+    "random",
+    "storage",
+    "audio",
+    "power"
+  ],
+  "api_level": 1,
+  "assets": []
+}
