@@ -57,6 +57,8 @@
 #define HOLD_MS     900     /* segurar pra começar / revelar */
 #define HOLD_TICK   30
 #define PICK_MS     320     /* a opção escolhida fica acesa antes da próxima */
+#define OPT_STAGGER 4       /* frames entre uma opção e a próxima aparecerem */
+#define OPT_FADE    5       /* frames do fade de cada opção */
 #define ANIM_TICK   30
 #define ANIM_FRAMES 8
 #define APART_PX    10      /* desencontro dos blocos do "não bateu" */
@@ -68,7 +70,12 @@
 #define RES_GAP_PHRASE 8
 #define RES_GAP_BTNS   18
 #define RES_BTN_GAP    10
-#define TICK_MS     14      /* bipe <= 14 ms o firmware toca a 0,34x: tique suave */
+#define HOLD_BAR_W  160     /* barra de "segure": curta e centralizada */
+#define NOTE_MS     95      /* nota da escala do resultado (a mesma do Sortear Times) */
+#define SCALE_STEPS 10      /* uma nota a cada 10% */
+#define KEEP_MS     2000    /* "bipe" mudo durante a rodada: o firmware desliga o
+                             * amplificador depois de 3 s sem som, e religar estala e
+                             * engole o 1º toque. Frequência 0 = só zeros no I2S. */
 #define HAND_DY     (-(KIT_UI_TITLEBAR / 2))   /* centro da TELA, não do tile: a cor cobre tudo */
 
 #define K_MODE  "duo_modo"
@@ -111,6 +118,10 @@ static uint32_t s_seen[DUO_THEME_COUNT][DUO_SEEN_WORDS];
 static duo_state_t s_st;
 static int s_hand;                         /* HAND_* */
 static int s_qidx[DUO_MAX_Q], s_n, s_i, s_who;
+/* o 2º jogador vê outra ordem de perguntas e outras posições de opção: quem
+ * acabou de responder não "entrega" a resposta pelo lugar onde tocou */
+static int8_t s_order[DUO_MAX_Q];       /* passo do 2º jogador -> pergunta */
+static int8_t s_perm[DUO_MAX_Q][4];     /* posição na tela -> opção, pro 2º jogador */
 static int8_t s_ans[2][DUO_MAX_Q];
 static bool s_pick_lock;
 static int s_hold_ms, s_anim_frame, s_count_k, s_count_n, s_pct;
@@ -123,6 +134,8 @@ static lv_obj_t *s_idle, *s_idle_n, *s_idle_sub, *s_idle_mode, *s_idle_who;
 static lv_obj_t *s_play;
 static lv_obj_t *s_hand_p, *s_hand_top, *s_hand_big, *s_hand_txt, *s_hand_hint, *s_hand_fill;
 static lv_obj_t *s_q_p, *s_q_who, *s_q_cnt, *s_q_txt, *s_q_row[2], *s_q_btn[4], *s_q_lbl[4];
+static bool s_q_intro;     /* opções ainda entrando, uma por uma: sem toque */
+static int  s_q_nvis;
 static lv_obj_t *s_rev_p, *s_rev_txt, *s_rev_one, *s_rev_one_l[2], *s_rev_one_ans;
 static lv_obj_t *s_rev_half[2], *s_rev_half_p[2], *s_rev_half_ans[2];
 static lv_obj_t *s_rev_big, *s_rev_small, *s_rev_hint, *s_tally[DUO_MAX_Q];
@@ -130,7 +143,12 @@ static lv_obj_t *s_res_p, *s_res_row, *s_res_num, *s_res_pct, *s_res_phrase;
 static lv_obj_t *s_res_again, *s_res_swap;
 
 /* timers */
-static lv_timer_t *s_hold_timer, *s_step_timer, *s_anim_timer;
+static lv_timer_t *s_hold_timer, *s_step_timer, *s_anim_timer, *s_keep_timer;
+static int s_count_prev;
+
+/* escala maior subindo, uma nota a cada 10% que o número passa (C5..E6),
+ * e o C6 curto no fim — o mesmo desenho da revelação do Sortear Times */
+static const uint16_t SCALE_HZ[SCALE_STEPS] = { 523, 587, 659, 698, 784, 880, 988, 1047, 1175, 1319 };
 static void (*s_step_fn)(void);
 
 /* -------------------------------------------------------------------- util */
@@ -228,6 +246,25 @@ static void paint_screen(uint32_t bg)
 
 static const duo_q_t *cur_q(int i) { return &DUO_THEMES[s_theme].q[s_qidx[i]]; }
 
+/* pergunta da vez (índice da rodada) e opção numa posição da tela */
+static int asked(void)              { return s_who == 1 ? s_order[s_i] : s_i; }
+static int opt_at(int qi, int pos)  { return s_who == 1 ? s_perm[qi][pos] : pos; }
+
+static void shuffle8(int8_t *v, int n)
+{
+    for (int i = 0; i < n; i++) v[i] = (int8_t)i;
+    for (int i = n - 1; i > 0; i--) {
+        int j = rng(0, i);
+        int8_t t = v[i]; v[i] = v[j]; v[j] = t;
+    }
+}
+
+static bool is_identity(const int8_t *v, int n)
+{
+    for (int i = 0; i < n; i++) if (v[i] != i) return false;
+    return true;
+}
+
 /* jogador que responde em 1º / 2º: ME CONHECE começa por quem é conhecido */
 static int player(int order)
 {
@@ -296,6 +333,8 @@ static void show_hand(int kind)
 
 /* ----------------------------------------------------------------- pergunta */
 
+static void anim_start(void);
+
 static void show_question(void)
 {
     s_st = ST_Q;
@@ -303,7 +342,8 @@ static void show_question(void)
     paint_screen(KIT_COLOR_BG);
     show_panel(s_q_p);
 
-    const duo_q_t *q = cur_q(s_i);
+    int qi = asked();
+    const duo_q_t *q = cur_q(qi);
     bool guess = (s_mode == DUO_MODE_CONHECE && s_who == 1);
     if (guess) lv_label_set_text_fmt(s_q_who, "P%d \xC2\xB7 CHUTE O P%d", player(1), player(0));
     else       lv_label_set_text_fmt(s_q_who, "P%d \xC2\xB7 SOBRE VOC\xC3\x8A", player(s_who));
@@ -314,9 +354,10 @@ static void show_question(void)
     bool four = (q->n == 4);
     bool big = (!four && (q->fit72 & 3) == 3);
     for (int b = 0; b < 4; b++) {
-        int o = four ? b : (b == 0 ? 0 : (b == 2 ? 1 : -1));
-        show(s_q_btn[b], o >= 0);
-        if (o < 0) continue;
+        int pos = four ? b : (b == 0 ? 0 : (b == 2 ? 1 : -1));
+        show(s_q_btn[b], pos >= 0);
+        if (pos < 0) continue;
+        int o = opt_at(qi, pos);
         lv_obj_set_style_bg_color(s_q_btn[b], lv_color_hex(KIT_COLOR_SURFACE), 0);
         set_text_color(s_q_lbl[b], KIT_COLOR_TEXT);
         lv_label_set_text(s_q_lbl[b], q->opt[o]);
@@ -326,6 +367,12 @@ static void show_question(void)
         else if (four) set_font(s_q_lbl[b], &kit_mono_20, 2);
         else           set_font(s_q_lbl[b], &kit_mono_26, 3);
     }
+
+    /* as opções entram uma por uma, cada uma num fade curto */
+    s_q_intro = true;
+    s_q_nvis = four ? 4 : 2;
+    for (int b = 0; b < 4; b++) lv_obj_set_style_opa(s_q_btn[b], LV_OPA_TRANSP, 0);
+    anim_start();
 }
 
 static void begin_reveal(void);
@@ -342,14 +389,15 @@ static void after_answer(void)
 static void opt_cb(lv_event_t *e)
 {
     int b = (int)(intptr_t)lv_event_get_user_data(e);
-    if (s_st != ST_Q || s_pick_lock) return;
-    const duo_q_t *q = cur_q(s_i);
-    int o = (q->n == 4) ? b : (b == 0 ? 0 : 1);
-    s_ans[s_who][s_i] = (int8_t)o;
+    if (s_st != ST_Q || s_pick_lock || s_q_intro) return;
+    int qi = asked();
+    const duo_q_t *q = cur_q(qi);
+    int pos = (q->n == 4) ? b : (b == 0 ? 0 : 1);
+    s_ans[s_who][qi] = (int8_t)opt_at(qi, pos);
     s_pick_lock = true;
     lv_obj_set_style_bg_color(s_q_btn[b], lv_color_hex(ACC), 0);
     set_text_color(s_q_lbl[b], ON_ACC);
-    kit_ui_beep(988, TICK_MS);
+    kit_ui_sfx(KIT_SFX_CLICK);
     step_after(PICK_MS, after_answer);
 }
 
@@ -405,6 +453,16 @@ static void anim_cb(lv_timer_t *t)
             lv_obj_set_style_translate_y(s_rev_half[0], -d, 0);
             lv_obj_set_style_translate_y(s_rev_half[1], d, 0);
         }
+    } else if (s_st == ST_Q) {
+        /* ordem de leitura: 2 opções = botões 0 e 2; 4 opções = 0 1 2 3 */
+        for (int k = 0; k < s_q_nvis; k++) {
+            int b = (s_q_nvis == 4) ? k : k * 2;
+            int t = f - k * OPT_STAGGER;
+            int o = t <= 0 ? 0 : (t >= OPT_FADE ? 255 : (255 * t) / OPT_FADE);
+            lv_obj_set_style_opa(s_q_btn[b], (lv_opa_t)o, 0);
+        }
+        if (f >= (s_q_nvis - 1) * OPT_STAGGER + OPT_FADE) { s_q_intro = false; kill_timer(&s_anim_timer); }
+        return;
     } else if (s_st == ST_RES) {
         lv_obj_set_style_translate_y(s_res_row, (s_res_dy * (ANIM_FRAMES - f)) / ANIM_FRAMES, 0);
         lv_obj_set_style_opa(s_res_phrase, (lv_opa_t)((255 * f) / ANIM_FRAMES), 0);
@@ -498,10 +556,14 @@ static void count_tick(void)
     s_count_k++;
     int v = (s_pct * s_count_k) / s_count_n;
     lv_label_set_text_fmt(s_res_num, "%d", v);
-    kit_ui_beep((uint16_t)(700 + v * 6), TICK_MS);   /* tique curto (sai a 1/3 do volume) */
+    for (int k = 0; k < SCALE_STEPS; k++) {
+        int th = (100 / SCALE_STEPS) * (k + 1);
+        if (s_count_prev < th && v >= th) kit_ui_beep(SCALE_HZ[k], NOTE_MS);
+    }
+    s_count_prev = v;
     if (s_count_k < s_count_n) {
         int r = (s_count_k * 100) / s_count_n;          /* 0..100 */
-        step_after((uint32_t)(35 + (90 * r * r) / 10000), count_tick);
+        step_after((uint32_t)(45 + (90 * r * r) / 10000), count_tick);
         return;
     }
     step_after(180, count_settle);
@@ -538,8 +600,8 @@ static void count_settle(void)
     lv_obj_set_style_opa(s_res_swap, LV_OPA_TRANSP, 0);
     anim_start();
     /* fecho em notas médias e curtas: grave e longo estoura o alto-falante */
-    if (s_pct >= 50) { kit_ui_beep(784, 60); kit_ui_beep(1047, 90); }
-    else             { kit_ui_beep(784, 60); kit_ui_beep(659, 90); }
+    kit_ui_beep(1046, 70);   /* "chegou", como o PRONTO do Sortear Times */
+    kill_timer(&s_keep_timer);   /* fim da rodada: o amplificador pode dormir */
 }
 
 static void begin_count(void)
@@ -555,14 +617,24 @@ static void begin_count(void)
     lv_obj_align(s_res_row, LV_ALIGN_CENTER, 0, 0);
     lv_label_set_text(s_res_num, "0");
     s_count_k = 0;
+    s_count_prev = 0;
     s_count_n = s_pct < 1 ? 1 : (s_pct < COUNT_MAX_STEPS ? s_pct : COUNT_MAX_STEPS);
     step_after(300, count_tick);
 }
 
 /* ------------------------------------------------------------------ rodada */
 
+static void keep_cb(lv_timer_t *t)
+{
+    (void)t;
+    kit_ui_beep(0, 20);
+}
+
 static void round_start(void)
 {
+    kill_timer(&s_keep_timer);
+    s_keep_timer = lv_timer_create(keep_cb, KEEP_MS, NULL);
+    kit_ui_beep(0, 20);
     kill_timer(&s_step_timer);
     kill_timer(&s_anim_timer);
     kill_timer(&s_hold_timer);
@@ -570,6 +642,11 @@ static void round_start(void)
     s_n = duo_pick(s_seen[s_theme], t, s_mode, NQ_VALUES[s_nq_idx], s_qidx, rng);
     save_seen(s_theme);
     memset(s_ans, -1, sizeof s_ans);
+    for (int tries = 0; tries < 6; tries++) {          /* ordem diferente da do 1º */
+        shuffle8(s_order, s_n);
+        if (s_n < 2 || !is_identity(s_order, s_n)) break;
+    }
+    for (int i = 0; i < s_n; i++) shuffle8(s_perm[i], DUO_THEMES[s_theme].q[s_qidx[i]].n);
     s_who = 0;
     s_i = 0;
     show(s_idle, false);
@@ -587,7 +664,7 @@ static void hold_tick_cb(lv_timer_t *t)
     (void)t;
     if (s_st != ST_HAND) { kill_timer(&s_hold_timer); return; }
     s_hold_ms += HOLD_TICK;
-    int w = (CW * (s_hold_ms > HOLD_MS ? HOLD_MS : s_hold_ms)) / HOLD_MS;
+    int w = (HOLD_BAR_W * (s_hold_ms > HOLD_MS ? HOLD_MS : s_hold_ms)) / HOLD_MS;
     lv_obj_set_width(s_hand_fill, w);
     if (s_hold_ms < HOLD_MS) return;
     kill_timer(&s_hold_timer);
@@ -734,7 +811,7 @@ static void build_hand(void)
 
     s_hand_hint = kit_ui_label(s_hand_p, "", ON_ACC, &kit_mono_20, 2);
     lv_obj_align(s_hand_hint, LV_ALIGN_BOTTOM_MID, 0, -46);
-    lv_obj_t *track = passive(kit_ui_rect(s_hand_p, CW, 10, KIT_COLOR_BG, 5));
+    lv_obj_t *track = passive(kit_ui_rect(s_hand_p, HOLD_BAR_W, 10, KIT_COLOR_BG, 5));
     lv_obj_set_style_bg_opa(track, LV_OPA_30, 0);
     lv_obj_align(track, LV_ALIGN_BOTTOM_MID, 0, -22);
     s_hand_fill = passive(kit_ui_rect(track, 0, 10, ON_ACC, 5));
@@ -940,6 +1017,7 @@ KIT_TOOL_EXPORT kit_err_t tool_init(kit_tool_ctx_t *ctx)
 
 KIT_TOOL_EXPORT void tool_destroy(void)
 {
+    kill_timer(&s_keep_timer);
     kill_timer(&s_hold_timer);
     kill_timer(&s_step_timer);
     kill_timer(&s_anim_timer);
@@ -955,6 +1033,7 @@ KIT_TOOL_EXPORT void tool_destroy(void)
     s_play = NULL;
     s_hand_p = s_hand_top = s_hand_big = s_hand_txt = s_hand_hint = s_hand_fill = NULL;
     s_q_p = s_q_who = s_q_cnt = s_q_txt = NULL;
+    s_q_intro = false;
     memset(s_q_row, 0, sizeof s_q_row);
     memset(s_q_btn, 0, sizeof s_q_btn);
     memset(s_q_lbl, 0, sizeof s_q_lbl);

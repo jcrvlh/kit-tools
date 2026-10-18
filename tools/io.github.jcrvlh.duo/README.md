@@ -29,8 +29,11 @@ como em todas as outras.
 1. **Vez do P1:** a tela fica azul. Quem pega o KIT segura o dedo na tela
    até a barra encher (0,9 s) pra começar. Um toque solto não pula a tela.
 2. **Perguntas:** com 2 opções a tela se divide em duas metades; com 4 vira
-   uma grade 2x2. A opção escolhida acende e a próxima pergunta entra.
-3. **Vez do P2:** a tela azul de novo, e as mesmas perguntas.
+   uma grade 2x2. As opções entram uma por uma, num fade curto, e só aceitam
+   toque depois que a última apareceu. A opção escolhida acende e a próxima pergunta entra.
+3. **Vez do P2:** a tela azul de novo, e as mesmas perguntas, em outra ordem
+   e com as opções em outras posições: quem acabou de responder não entrega a
+   resposta pelo lugar onde tocou. A revelação segue a ordem do P1.
 4. **Os dois juntos:** segurar pra revelar.
 5. **Revelação, uma por uma:**
    - **Bateu:** tela verde, as duas respostas fundidas num bloco só e
@@ -39,8 +42,8 @@ como em todas as outras.
      desce), cada um com a sua resposta.
    - Embaixo, um quadrado por pergunta vai marcando o placar.
    - Toque em qualquer lugar pra seguir.
-6. **Resultado:** o % sobe de 0 até o valor, centralizado, com um bipe por
-   passo e o tom subindo. Depois o número sobe pro lugar e aparecem a frase,
+6. **Resultado:** o % sobe de 0 até o valor, centralizado, e a cada 10% toca
+   uma nota de uma escala subindo. Depois o número sobe pro lugar e aparecem a frase,
    **JOGAR DE NOVO** e, no Me conhece, **TROCAR PAPÉIS**. Aqui as páginas
    destravam, dá pra mudar o AJUSTE antes de jogar de novo.
 
@@ -91,4 +94,13 @@ cmake -B build -S . -DKIT_SDK_PATH=~/Projetos/kit/tools-sdk && cmake --build bui
 kit-cli build . --target xtensa       # tool.so
 ```
 
-Requer runtime **0.15.0**. Inteiro puro, sem `float`. Sons: tiques de 14 ms (o firmware toca a 1/3 do volume) e notas sempre acima de 600 Hz, porque grave e longo estoura o alto-falante.
+Requer runtime **0.15.0**. Inteiro puro, sem `float`.
+
+**Som.** O firmware desliga o amplificador depois de 3 s sem som e religar
+estala e pode engolir o 1º toque — no Duo quase todo toque vem depois de uns
+segundos lendo a pergunta. Por isso, durante a rodada, a Tool manda a cada 2 s
+um "bipe" de frequência 0 (só zeros no I2S), que mantém o amplificador ligado.
+O toque da resposta é o `KIT_SFX_CLICK`, igual pra todas as opções (um tom
+por opção entregaria a resposta pro outro jogador). O resultado sobe numa
+escala maior, uma nota de 95 ms a cada 10% (C5 a E6), e fecha num C6 curto: o
+mesmo desenho da revelação do Sortear Times.
